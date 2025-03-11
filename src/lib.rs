@@ -10,6 +10,12 @@ use bitcoin::bip32::DerivationPath;
 use bitcoin::PublicKey;
 use tiny_keccak::Keccak;
 use tiny_keccak::Hasher;
+use ethers::providers::{Http, Provider};
+use ethers::providers::Middleware;
+use std::convert::TryFrom;
+use serde::{Deserialize, Serialize};
+use reqwest::header::CONTENT_TYPE;
+use serde_json::Value;
 
 #[wasm_bindgen]
 pub struct Wallet{
@@ -18,9 +24,11 @@ pub struct Wallet{
     address: String,
     chain_id: u64,
     nonce: u64,
+    eth_balance : f64,
     balance: U256,
     gas_price: U256,
 }
+
 
 #[wasm_bindgen]
 impl Wallet {
@@ -32,88 +40,101 @@ impl Wallet {
             address:"".to_string(),
             chain_id,
             nonce: 0,
+            eth_balance:0.0,
             balance: U256::zero(),
             gas_price: U256::zero(),
         }
     }
 
     pub async fn sync(&mut self) -> String {
-        let client = Client::new();
+        let url = self.infura_url.clone();
+        let client = reqwest::Client::new();
+        let addr = self.address(); 
 
-        // Fetch balance
-        let balance_req = json!({
-            "jsonrpc": "2.0",
-            "method": "eth_getBalance",
-            "params": [self.address, "latest"],
-            "id": 1
-        });
-        let balance_resp = client
-            .post(&self.infura_url)
-            .json(&balance_req)
+        // Batch JSON-RPC request
+        let request_body = json!([
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_getBalance",
+                "params": [addr.clone(), "latest"],
+                "id": 1,
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_getTransactionCount",
+                "params": [addr.clone(), "latest"],
+                "id": 2,
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_gasPrice",
+                "params": [],
+                "id": 3,
+            }
+        ]);
+
+        let response = match client.post(&url)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&request_body)
             .send()
-            .await;
-        if let Ok(resp) = balance_resp {
-            if let Ok(resp_json) = resp.json::<serde_json::Value>().await {
-                if let Some(bal_hex) = resp_json.get("result").and_then(|r| r.as_str()) {
-                    // Parse the hex string (e.g. "0x38d7ea4c68000")
-                    self.balance = U256::from_str_radix(&bal_hex.trim_start_matches("0x"), 16)
-                        .unwrap_or(U256::zero());
+            .await {
+                Ok(resp) => resp,
+                Err(_) => return "Error: Infura error.".to_string(),
+            };
+
+        if response.status().is_success() {
+            let body = response.text().await.unwrap();
+            let parsed: Value = match serde_json::from_str(&body) {
+                Ok(val) => val,
+                Err(_) => return "Error: JSON parse error.".to_string(),
+            };
+
+            let responses = match parsed.as_array() {
+                Some(arr) => arr,
+                None => return "Error: Unexpected JSON format.".to_string(),
+            };
+
+            for resp in responses {
+                let id = resp["id"].as_i64().unwrap_or_default();
+                let result = match resp["result"].as_str() {
+                    Some(r) => r,
+                    None => continue,
+                };
+                match id {
+                    1 => { // eth_getBalance
+                        let balance = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                            Ok(val) => val,
+                            Err(_) => return "Error: Balance parse error.".to_string(),
+                        };
+                        self.balance = balance;
+                        self.eth_balance = wei_to_eth(self.balance);
+                    },
+                    2 => { // eth_getTransactionCount (nonce)
+                        let nonce = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                            Ok(val) => val,
+                            Err(_) => return "Error: Nonce parse error.".to_string(),
+                        };
+                        self.nonce = nonce.low_u64();
+                    },
+                    3 => { // eth_gasPrice
+                        let gas_price = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                            Ok(val) => val,
+                            Err(_) => return "Error: Gas price parse error.".to_string(),
+                        };
+                        self.gas_price = gas_price;
+                    },
+                    _ => {}
                 }
             }
+            "Sync successful.".to_string()
         } else {
-            return "Error: Failed to fetch balance.".to_string();
+            "Error: Infura error.".to_string()
         }
-
-        // Fetch nonce (transaction count)
-        let nonce_req = json!({
-            "jsonrpc": "2.0",
-            "method": "eth_getTransactionCount",
-            "params": [self.address, "latest"],
-            "id": 1
-        });
-        let nonce_resp = client
-            .post(&self.infura_url)
-            .json(&nonce_req)
-            .send()
-            .await;
-        if let Ok(resp) = nonce_resp {
-            if let Ok(resp_json) = resp.json::<serde_json::Value>().await {
-                if let Some(nonce_hex) = resp_json.get("result").and_then(|r| r.as_str()) {
-                    self.nonce = u64::from_str_radix(&nonce_hex.trim_start_matches("0x"), 16)
-                        .unwrap_or(0);
-                }
-            }
-        } else {
-            return "Error: Failed to fetch nonce.".to_string();
-        }
-
-        // Fetch current gas price
-        let gas_req = json!({
-            "jsonrpc": "2.0",
-            "method": "eth_gasPrice",
-            "params": [],
-            "id": 1
-        });
-        let gas_resp = client
-            .post(&self.infura_url)
-            .json(&gas_req)
-            .send()
-            .await;
-        if let Ok(resp) = gas_resp {
-            if let Ok(resp_json) = resp.json::<serde_json::Value>().await {
-                if let Some(gas_hex) = resp_json.get("result").and_then(|r| r.as_str()) {
-                    self.gas_price = U256::from_str_radix(&gas_hex.trim_start_matches("0x"), 16)
-                        .unwrap_or(U256::zero());
-                }
-            }
-        } else {
-            return "Error: Failed to fetch gas price.".to_string();
-        }
-        "Sync successful.".to_string()
     }
 
-    pub fn send(&self,to: String,value: &str,gas_limit: u64,data: Option<String>,) -> String {
+    pub fn send(&self,to: String,value: &str,data: Option<String>,) -> String {
         // Convert the value from a decimal string to U256
+        let gas_limit : u64= 21000;
         let value_u256 = U256::from_dec_str(value).unwrap_or(U256::zero());
         // Decode the data payload from hex if provided
         let data_bytes = match data {
@@ -140,8 +161,16 @@ impl Wallet {
         stream.append(&0u8);
         let rlp_encoded = stream.out();
 
+        let mut hasher = Keccak::v256();
+        let mut tx_hash = [0u8; 32];
+        hasher.update(&rlp_encoded);
+        hasher.finalize(&mut tx_hash);
+
         // Return the unsigned transaction as a hex string.
-        hex::encode(rlp_encoded)
+        let final_str = base64::encode(&rlp_encoded) + ":&" + &base64::encode(&tx_hash);
+        //let final_str = &base64::encode(&tx_hash);
+        //return chunk_and_label(&final_str,40);
+        return final_str;
     }
 
     pub async fn broadcast(&mut self, signed_tx: String) -> String {
@@ -195,11 +224,11 @@ impl Wallet {
 	    hasher.finalize(&mut output);
 	    // Take the lower 20 bytes for the address
 	    let address = &output[12..];
-	    
+	    self.address = format!("0x{}", hex::encode(address));
     	return format!("0x{}", hex::encode(address));
     }
     pub fn balance(&self) -> String {
-        self.balance.to_string()
+        self.eth_balance.to_string()
     }
 
     pub fn nonce(&self) -> u64 {
@@ -233,3 +262,44 @@ pub fn hex_to_vec(hex_string: &str) -> Option<Vec<u8>> {
     }
     Some(bytes)
 }
+pub fn wei_to_eth(wei: U256) -> f64 {
+    // Convert U256 to a string, then parse as f64.
+    // Note: This approach works well for typical balances,
+    // but may lose precision for extremely large values.
+    let wei_str = wei.to_string();
+    let wei_f64: f64 = wei_str.parse().expect("Failed to parse Wei as f64");
+    // Divide by 10^18 to get Ether
+    wei_f64 / 1e18
+}
+pub fn chunk_and_label(final_str: &str, chunk_size: usize) -> Vec<String> {
+    let total_chunks = (final_str.len() + chunk_size - 1) / chunk_size; // Calculate the number of chunks
+    final_str
+        .chars() // Iterate over characters to respect character boundaries
+        .collect::<Vec<_>>() // Collect characters into a vector for chunking
+        .chunks(chunk_size) // Chunk the vector
+        .enumerate() // Provide index for each chunk
+        .map(|(index, chunk)| {
+            let chunk_str = chunk.iter().collect::<String>(); // Convert chunk to string
+            format!("({}/{}){}", index, total_chunks, chunk_str) // Format with index and total
+        })
+        .collect() // Collect into a vector of strings
+}
+
+
+#[derive(Deserialize, Debug)]
+struct JsonRpcResponse {
+    jsonrpc: String,
+    id: u32,
+    // The result is a hexadecimal string representing the balance in wei
+    result: Option<String>,
+    error: Option<serde_json::Value>,
+}
+
+#[derive(Serialize)]
+struct JsonRpcRequest<'a> {
+    jsonrpc: &'a str,
+    method: &'a str,
+    params: Vec<&'a str>,
+    id: u32,
+}
+

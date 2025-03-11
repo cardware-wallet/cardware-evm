@@ -19,7 +19,11 @@ reqwest = { version = "0.11", default-features = false, features = ["json","rust
 hex = "0.4"
 rlp = "0.5"
 ethereum-types = "0.12"
+ethers = "1.0"
 tiny-keccak = "2.0"
 base64 = "0.13"
 bitcoin = { version="0.32", features=["base64"]}
 bs58 = {version="0.4",features=["check"]}
+
+#This dependancy is just for testing and isn't needed for build outs and stops wasm-pack build
+tokio = { version = "1", features = ["full"]}
