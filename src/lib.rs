@@ -11,8 +11,6 @@ use bitcoin::bip32::DerivationPath;
 use bitcoin::PublicKey;
 use tiny_keccak::Keccak;
 use tiny_keccak::Hasher;
-use ethers::providers::{Http, Provider};
-use ethers::providers::Middleware;
 use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 use reqwest::header::CONTENT_TYPE;
@@ -26,8 +24,8 @@ pub struct Wallet{
     chain_id: u64,
     nonce: u64,
     eth_balance : f64,
-    balance: U256,
-    gas_price: U256,
+    balance: String,
+    gas_price: String,
 }
 
 
@@ -42,8 +40,8 @@ impl Wallet {
             chain_id,
             nonce: 0,
             eth_balance:0.0,
-            balance: U256::zero(),
-            gas_price: U256::zero(),
+            balance: "0".to_string(),
+            gas_price: "0".to_string(),
         }
     }
 
@@ -107,8 +105,8 @@ impl Wallet {
                             Ok(val) => val,
                             Err(_) => return "Error: Balance parse error.".to_string(),
                         };
-                        self.balance = balance;
-                        self.eth_balance = wei_to_eth(self.balance);
+                        self.balance = gas_price_to_string(balance);
+                        self.eth_balance = wei_to_eth(balance);
                     },
                     2 => { // eth_getTransactionCount (nonce)
                         let nonce = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
@@ -122,7 +120,7 @@ impl Wallet {
                             Ok(val) => val,
                             Err(_) => return "Error: Gas price parse error.".to_string(),
                         };
-                        self.gas_price = gas_price;
+                        self.gas_price = gas_price_to_string(gas_price);
                     },
                     _ => {}
                 }
@@ -139,11 +137,12 @@ impl Wallet {
         let gas_limit : u64= 21000;
         let value_u256 = U256::from_dec_str(value).unwrap_or(U256::zero());
         let mut new_gas_price : U256 = U256::zero();
+        let self_gas = gas_price_from_string(&self.gas_price);
         match fee_rate{
-            0 => new_gas_price = &self.gas_price * U256::from(9) / U256::from(10),
-            1 => new_gas_price = self.gas_price,
-            2 => new_gas_price = &self.gas_price * U256::from(11) / U256::from(10) ,
-            _ => new_gas_price = self.gas_price,
+            0 => new_gas_price = &self_gas * U256::from(9) / U256::from(10),
+            1 => new_gas_price = self_gas,
+            2 => new_gas_price = &self_gas * U256::from(11) / U256::from(10) ,
+            _ => new_gas_price = self_gas,
         }
         println!("gas price {:?}",new_gas_price);
 
@@ -346,11 +345,12 @@ impl Wallet {
     pub fn estimate_fee(&self, fee_rate : i32) -> String{
         let gas_limit = 21000;
         let mut new_gas_price : U256 = U256::zero();
+        let self_gas = gas_price_from_string(&self.gas_price);
         match fee_rate{
-            0 => new_gas_price = &self.gas_price * U256::from(9) / U256::from(10),
-            1 => new_gas_price = self.gas_price,
-            2 => new_gas_price = &self.gas_price * U256::from(11) / U256::from(10) ,
-            _ => new_gas_price = self.gas_price,
+            0 => new_gas_price = &self_gas * U256::from(9) / U256::from(10),
+            1 => new_gas_price = self_gas,
+            2 => new_gas_price = &self_gas * U256::from(11) / U256::from(10) ,
+            _ => new_gas_price = self_gas,
         }
         new_gas_price = new_gas_price * U256::from(gas_limit);
         return format!("{}",wei_to_eth(new_gas_price));
@@ -373,7 +373,18 @@ pub fn convert_to_xpub(xpub_str : String) -> String{
     }
     return bs58::encode(vec).with_check().into_string();
 }
+fn gas_price_to_string(gas_price: U256) -> String {
+    gas_price.to_string()
+}
 
+// Convert a decimal string to a U256 gas price.
+fn gas_price_from_string(s: &str) -> U256 {
+    let res = match U256::from_dec_str(s){
+        Ok(res) => res,
+        Err(_) => U256::zero(),
+    };
+    return res;
+}
 pub fn hex_to_vec(hex_string: &str) -> Option<Vec<u8>> {
     if hex_string.len() % 2 != 0 { return None; }
     let mut bytes = Vec::new();
@@ -391,7 +402,10 @@ pub fn wei_to_eth(wei: U256) -> f64 {
     // Note: This approach works well for typical balances,
     // but may lose precision for extremely large values.
     let wei_str = wei.to_string();
-    let wei_f64: f64 = wei_str.parse().expect("Failed to parse Wei as f64");
+    let wei_f64: f64 = match wei_str.parse(){
+        Ok(f6) => f6,
+        Err(_) => return 0.0,
+    };
     // Divide by 10^18 to get Ether
     wei_f64 / 1e18
 }
@@ -410,20 +424,4 @@ pub fn chunk_and_label(final_str: &str, chunk_size: usize) -> Vec<String> {
 }
 
 
-#[derive(Deserialize, Debug)]
-struct JsonRpcResponse {
-    jsonrpc: String,
-    id: u32,
-    // The result is a hexadecimal string representing the balance in wei
-    result: Option<String>,
-    error: Option<serde_json::Value>,
-}
-
-#[derive(Serialize)]
-struct JsonRpcRequest<'a> {
-    jsonrpc: &'a str,
-    method: &'a str,
-    params: Vec<&'a str>,
-    id: u32,
-}
 

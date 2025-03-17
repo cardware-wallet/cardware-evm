@@ -14,8 +14,8 @@ async fn main() {
     //estimate fee example:
     let fee_est = wal.estimate_fee(1);
     println!("fee est: {:?}",fee_est);
-    /*let res3 = wal.broadcast("e8808430fc4dae8252089402a8665a18bba2d1b4766e2d71977a781b97592e857ea8ed400080018080".to_string(),
+    let res3 = wal.broadcast("e8808430fc4dae8252089402a8665a18bba2d1b4766e2d71977a781b97592e857ea8ed400080018080".to_string(),
                               "HEF58ia0Hr+7lzfMSH0QUw+EzN++IxPtST5KJ7sh4okWdaDf1bJS0Syu25/8E9Gd+4qOU5FvlFinrzTnJN/eOhw=".to_string()).await; 
-    println!("res3: {:?}",res3); */
+    println!("res3: {:?}",res3); 
 
 }
