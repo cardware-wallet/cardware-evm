@@ -3,6 +3,7 @@ use reqwest::Client;
 use serde_json::json;
 use hex;
 use rlp::RlpStream;
+use rlp::Rlp;
 use std::str::FromStr;
 use ethereum_types::{Address, U256};
 use bitcoin::bip32::Xpub;
@@ -132,11 +133,22 @@ impl Wallet {
         }
     }
 
-    pub fn send(&self,to: String,value: &str,data: Option<String>,) -> String {
+    //fee rate determines tx fee, 0 = slow, 1 = medium, 2 = fast
+    pub fn send(&self,to: String,value: &str,fee_rate : i32) -> String {
         // Convert the value from a decimal string to U256
         let gas_limit : u64= 21000;
         let value_u256 = U256::from_dec_str(value).unwrap_or(U256::zero());
+        let mut new_gas_price : U256 = U256::zero();
+        match fee_rate{
+            0 => new_gas_price = &self.gas_price * U256::from(9) / U256::from(10),
+            1 => new_gas_price = self.gas_price,
+            2 => new_gas_price = &self.gas_price * U256::from(11) / U256::from(10) ,
+            _ => new_gas_price = self.gas_price,
+        }
+        println!("gas price {:?}",new_gas_price);
+
         // Decode the data payload from hex if provided
+        /*
         let data_bytes = match data {
             Some(d) => {
                 let trimmed = d.trim_start_matches("0x");
@@ -144,48 +156,145 @@ impl Wallet {
             }
             None => Vec::new(),
         };
-
+        */
         // RLP encode the transaction according to EIP-155.
         // The list of fields for signing is:
         // [ nonce, gas_price, gas_limit, to, value, data, chain_id, 0, 0 ]
+
         let mut stream = RlpStream::new_list(9);
         stream.append(&U256::from(self.nonce));
-        stream.append(&self.gas_price);
+        stream.append(&new_gas_price);
         stream.append(&U256::from(gas_limit));
         let to_address = Address::from_str(&to).unwrap_or(Address::zero());
         stream.append(&to_address);
         stream.append(&value_u256);
-        stream.append(&data_bytes);
+        stream.append(&Vec::new()); //Data bytes
         stream.append(&self.chain_id);
         stream.append(&0u8);
         stream.append(&0u8);
         let rlp_encoded = stream.out();
-
         let mut hasher = Keccak::v256();
         let mut tx_hash = [0u8; 32];
         hasher.update(&rlp_encoded);
         hasher.finalize(&mut tx_hash);
+        let unsigned_tx = hex::encode(rlp_encoded);
 
         // Return the unsigned transaction as a hex string.
-        let final_str = base64::encode(&rlp_encoded) + ":&" + &base64::encode(&tx_hash);
+        let final_str = unsigned_tx + ":&" + &base64::encode(&tx_hash);
+        //let final_str = unsigned_tx + ":&" + &hex::encode(&tx_hash);
         //let final_str = &base64::encode(&tx_hash);
         //return chunk_and_label(&final_str,40);
         return final_str;
     }
 
-    pub async fn broadcast(&mut self, signed_tx: String) -> String {
+    pub async fn broadcast(&mut self, unsigned_tx: String,tx_signature : String) -> String {
 
-        let tx_hex = if let Ok(decoded) = base64::decode(&signed_tx) {
+        let unsigned_tx_hex = unsigned_tx.trim_start_matches("0x");
+        let unsigned_tx_bytes = match hex::decode(unsigned_tx_hex){
+            Ok(bytes) => bytes,
+            Err(_) => return "error.".to_string(),
+        };
+
+        // Decode the unsigned transaction RLP.
+        // This unsigned tx is expected to have 9 fields:
+        // [nonce, gasPrice, gasLimit, to, value, data, v, r, s]
+        // In the unsigned tx, the v, r, s fields are placeholders (usually 0x80).
+        let rlp_unsigned = Rlp::new(&unsigned_tx_bytes);
+        let base_bytes = match base64::decode(&tx_signature){
+            Ok(bytes) => bytes,
+            Err(_) => return "era".to_string(),
+        };
+
+        let nonce = match rlp_unsigned.at(0) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(err) => return "error.".to_string(),
+            },
+            Err(err) => return "error.".to_string(),
+        };
+
+        let gas_price = match rlp_unsigned.at(1) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(err) =>return "error.".to_string(),
+            },
+            Err(err) => return "error.".to_string(),
+        };
+
+        let gas_limit = match rlp_unsigned.at(2) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(err) => return "error.".to_string(),
+            },
+            Err(err) => return "error.".to_string(),
+        };
+
+        let to = match rlp_unsigned.at(3) {
+            Ok(field) => match field.data() {
+                Ok(data) => data.to_vec(),
+                Err(err) => return "error.".to_string(),
+            },
+            Err(err) => return "error.".to_string(),
+        };
+
+        let value = match rlp_unsigned.at(4) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(err) => return "error.".to_string(),
+            },
+            Err(err) => return "error.".to_string(),
+        };
+
+        let data_field = match rlp_unsigned.at(5) {
+            Ok(field) => match field.data() {
+                Ok(data) => data.to_vec(),
+                Err(err) => return "error.".to_string(),
+            },
+            Err(err) => return "error.".to_string(),
+        };
+
+        let chain_id = match rlp_unsigned.at(6) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(e) => return "erro".to_string(),
+            },
+            Err(e) => return "erro".to_string(),
+        };
+
+        println!("{:?}",base_bytes);
+        let r_sig = &base_bytes[0..32];
+        let s_sig = &base_bytes[32..64];
+        let v_sig = base_bytes[64];
+        
+        let recovery_id = if v_sig > 1 { v_sig - 27 } else { v_sig };
+        let v_eip155 = chain_id.low_u64() * 2 + 35 + recovery_id as u64;
+        println!("v_eip155 :{:?}",v_eip155);
+        let mut stream = RlpStream::new_list(9);
+        stream.append(&nonce);
+        stream.append(&gas_price);
+        stream.append(&gas_limit);
+        stream.append(&to);
+        stream.append(&value);
+        stream.append(&data_field);
+        stream.append(&v_eip155);
+        stream.append(&r_sig);
+        stream.append(&s_sig);
+
+        let signed_tx_bytes = stream.out().to_vec();
+        let signed_tx_hex = format!("0x{}", hex::encode(&signed_tx_bytes));
+        println!("signed tx: {:?}",signed_tx_hex);
+        /*
+        let tx_hex = if let Ok(decoded) = base64::decode(&tx_signature) {
             hex::encode(decoded)
         } else {
             signed_tx
-        };
-
+        };*/
+        
         let client = Client::new();
         let req_body = json!({
             "jsonrpc": "2.0",
             "method": "eth_sendRawTransaction",
-            "params": [format!("0x{}", tx_hex)],
+            "params": [signed_tx_hex],
             "id": 1
         });
         let resp = client.post(&self.infura_url).json(&req_body).send().await;
@@ -198,31 +307,34 @@ impl Wallet {
                 }
             }
         }
-        "Error: Failed to broadcast transaction.".to_string()
+        return "done".to_string();
     }
+
     pub fn address(&mut self) -> String{
     	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1 
+        println!("xpub tmp {:?}",xpub_tmp_str);
         let xpub = match Xpub::from_str(&xpub_tmp_str){
             Ok(xpub) => xpub,
             Err(_) => return "Error: Xpub derivation error.".to_string(),
         };
+        println!("xpub1 {}:",xpub);
         let derivation_path = DerivationPath::from_str("m/0/0").unwrap();
         let derived_xpub = match xpub.derive_pub(&bitcoin::secp256k1::Secp256k1::new(), &derivation_path){
             Ok(derived_xpub) => derived_xpub,
             Err(_) => return "Error: Xpub derivation error.".to_string(),
         };
-        let public_key = PublicKey::new(
+        println!("xpub2 {}:",derived_xpub);
+        let public_key = PublicKey::new_uncompressed(
             derived_xpub.public_key
         );
         let uncompressed = public_key.to_bytes();
-	    // Skip the first byte (0x04)
+        println!("pubkey {}:",public_key);
 	    let public_bytes = &uncompressed[1..];
 	    // Hash with Keccak-256
 	    let mut hasher = Keccak::v256();
 	    let mut output = [0u8; 32];
 	    hasher.update(public_bytes);
 	    hasher.finalize(&mut output);
-	    // Take the lower 20 bytes for the address
 	    let address = &output[12..];
 	    self.address = format!("0x{}", hex::encode(address));
     	return format!("0x{}", hex::encode(address));
@@ -230,7 +342,19 @@ impl Wallet {
     pub fn balance(&self) -> String {
         self.eth_balance.to_string()
     }
-
+    //fee rate, 0 = slow, 1 = medium, 2 = fast
+    pub fn estimate_fee(&self, fee_rate : i32) -> String{
+        let gas_limit = 21000;
+        let mut new_gas_price : U256 = U256::zero();
+        match fee_rate{
+            0 => new_gas_price = &self.gas_price * U256::from(9) / U256::from(10),
+            1 => new_gas_price = self.gas_price,
+            2 => new_gas_price = &self.gas_price * U256::from(11) / U256::from(10) ,
+            _ => new_gas_price = self.gas_price,
+        }
+        new_gas_price = new_gas_price * U256::from(gas_limit);
+        return format!("{}",wei_to_eth(new_gas_price));
+    }
     pub fn nonce(&self) -> u64 {
         self.nonce
     }

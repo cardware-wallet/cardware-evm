@@ -1,0 +1,16 @@
+{
+  "name": "cardware-evm",
+  "version": "0.1.0",
+  "files": [
+    "cardware_evm_bg.wasm",
+    "cardware_evm.js",
+    "cardware_evm_bg.js",
+    "cardware_evm.d.ts"
+  ],
+  "module": "cardware_evm.js",
+  "types": "cardware_evm.d.ts",
+  "sideEffects": [
+    "./cardware_evm.js",
+    "./snippets/*"
+  ]
+}
