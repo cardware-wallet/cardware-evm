@@ -20,28 +20,32 @@ use serde_json::Value;
 pub struct Wallet{
     infura_url: String,
     xpub : String,
+    account_derivation_path : String,
     address: String,
     chain_id: u64,
     nonce: u64,
     eth_balance : f64,
     balance: String,
     gas_price: String,
+    imported_contracts: Vec<String>,
 }
 
 
 #[wasm_bindgen]
 impl Wallet {
     #[wasm_bindgen(constructor)]
-    pub fn new(xpub: String, infura_url: String, chain_id: u64) -> Wallet {
+    pub fn new(xpub: String, account_derivation_path : String, infura_url: String, chain_id: u64) -> Wallet { //Acount derivation paths must be in the format m/x/y eg: "m/0/0" or "m/1/2"
         Wallet {
             infura_url,
             xpub,
+            account_derivation_path,
             address:"".to_string(),
             chain_id,
             nonce: 0,
             eth_balance:0.0,
             balance: "0".to_string(),
             gas_price: "0".to_string(),
+            imported_contracts: Vec::new(),
         }
     }
 
@@ -176,14 +180,98 @@ impl Wallet {
         let mut tx_hash = [0u8; 32];
         hasher.update(&rlp_encoded);
         hasher.finalize(&mut tx_hash);
+        let mut total_bytes : Vec<u8> = Vec::new();
+        total_bytes.extend_from_slice(&tx_hash);
+        match extract_u16s(&self.account_derivation_path) {
+            Ok((first, second)) => append_integers_as_bytes(&mut total_bytes,first,second),
+            Err(_) => return "Error: Derivation path error.".to_string(),
+        }
         let unsigned_tx = hex::encode(rlp_encoded);
 
         // Return the unsigned transaction as a hex string.
-        let final_str = unsigned_tx + ":&" + &base64::encode(&tx_hash);
+        let final_str = unsigned_tx + ":&" + &base64::encode(&total_bytes);
         //let final_str = unsigned_tx + ":&" + &hex::encode(&tx_hash);
         //let final_str = &base64::encode(&tx_hash);
         //return chunk_and_label(&final_str,40);
         return final_str;
+    }
+    pub async fn import_contract(&mut self, contract_address: String) -> String {
+        let url = self.infura_url.clone();
+        let client = reqwest::Client::new();
+        let request_body = json!({
+            "jsonrpc": "2.0",
+            "method": "eth_getCode",
+            "params": [contract_address.clone(), "latest"],
+            "id": 1,
+        });
+        let response = match client
+            .post(&url)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&request_body)
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(_) => return "Error: Infura error.".to_string(),
+        };
+
+        if response.status().is_success() {
+            let body = response.text().await.unwrap();
+            let parsed: Value = match serde_json::from_str(&body) {
+                Ok(val) => val,
+                Err(_) => return "Error: JSON parse error.".to_string(),
+            };
+
+            let code = match parsed.get("result").and_then(|r| r.as_str()) {
+                Some(c) => c,
+                None => return "Error: Unexpected JSON format.".to_string(),
+            };
+            if code == "0x" || code == "0x0" {
+                return "Error: No contract code found at this address.".to_string();
+            } else {
+                self.imported_contracts.push(contract_address.clone());
+                return format!("Contract {} imported successfully.", contract_address);
+            }
+        } else {
+            return "Error: Infura error.".to_string();
+        }
+    }
+
+    pub fn erc20_transfer(&self, contract_address: String, recipient: String, token_amount: &str, fee_rate: i32) -> String {
+        // Use a higher gas limit for token transfers.
+        let gas_limit: u64 = 60000;
+        let token_amount_u256 = U256::from_dec_str(token_amount).unwrap_or(U256::zero());
+        // Encode the ERC20 transfer data.
+        let data = encode_transfer(&recipient, token_amount_u256);
+        let mut new_gas_price: U256 = U256::zero();
+        let self_gas = gas_price_from_string(&self.gas_price);
+        match fee_rate {
+            0 => new_gas_price = &self_gas * U256::from(9) / U256::from(10),
+            1 => new_gas_price = self_gas,
+            2 => new_gas_price = &self_gas * U256::from(11) / U256::from(10),
+            _ => new_gas_price = self_gas,
+        }
+
+        let mut stream = RlpStream::new_list(9);
+        stream.append(&U256::from(self.nonce));
+        stream.append(&new_gas_price);
+        stream.append(&U256::from(gas_limit));
+        let contract_addr = Address::from_str(&contract_address).unwrap_or(Address::zero());
+        stream.append(&contract_addr);
+        // For token transfers, ETH value is zero.
+        stream.append(&U256::zero());
+        stream.append(&data);
+        stream.append(&self.chain_id);
+        stream.append(&0u8);
+        stream.append(&0u8);
+        let rlp_encoded = stream.out();
+        let mut hasher = Keccak::v256();
+        let mut tx_hash = [0u8; 32];
+        hasher.update(&rlp_encoded);
+        hasher.finalize(&mut tx_hash);
+        let unsigned_tx = hex::encode(rlp_encoded);
+        let final_str = unsigned_tx + ":&" + &base64::encode(&tx_hash);
+        final_str
     }
 
     pub async fn broadcast(&mut self, unsigned_tx: String,tx_signature : String) -> String {
@@ -317,7 +405,7 @@ impl Wallet {
             Err(_) => return "Error: Xpub derivation error.".to_string(),
         };
         println!("xpub1 {}:",xpub);
-        let derivation_path = DerivationPath::from_str("m/0/0").unwrap();
+        let derivation_path = DerivationPath::from_str(&self.account_derivation_path).unwrap();
         let derived_xpub = match xpub.derive_pub(&bitcoin::secp256k1::Secp256k1::new(), &derivation_path){
             Ok(derived_xpub) => derived_xpub,
             Err(_) => return "Error: Xpub derivation error.".to_string(),
@@ -423,5 +511,40 @@ pub fn chunk_and_label(final_str: &str, chunk_size: usize) -> Vec<String> {
         .collect() // Collect into a vector of strings
 }
 
+// Helper function to encode ERC20 transfer data.
+pub fn encode_transfer(recipient: &str, amount: U256) -> Vec<u8> {
+    let mut data = Vec::new();
+    // Function selector for transfer(address,uint256): "a9059cbb"
+    let selector = hex::decode("a9059cbb").expect("Invalid function selector");
+    data.extend(selector);
 
+    // Encode recipient address.
+    let recipient_clean = recipient.trim_start_matches("0x");
+    let recipient_bytes = hex::decode(recipient_clean).expect("Invalid recipient address");
+    let mut padded_recipient = vec![0u8; 12]; // 32 - 20 = 12 bytes of zero padding.
+    padded_recipient.extend(recipient_bytes);
+    data.extend(padded_recipient);
+
+    // Encode amount as a 32-byte big-endian integer.
+    let mut amount_bytes = [0u8; 32];
+    amount.to_big_endian(&mut amount_bytes);
+    data.extend_from_slice(&amount_bytes);
+
+    data
+}
+pub fn extract_u16s(input: &str) -> Result<(u16, u16), &'static str> {
+        let parts: Vec<&str> = input.split('/').collect();
+        if parts.len() != 3 {
+            return Err("Error: Invalid format.");
+        }
+        let first_u16 = parts[1].parse::<u16>().map_err(|_| "Error: Failed to parse first number.")?;
+        let second_u16 = parts[2].parse::<u16>().map_err(|_| "Error: Failed to parse second number.")?;
+        Ok((first_u16, second_u16))
+}
+pub fn append_integers_as_bytes(vec: &mut Vec<u8>, addressdepth: u16, changedepth: u16) {
+    let addressdepth_bytes = addressdepth.to_le_bytes();
+    let changedepth_bytes = changedepth.to_le_bytes();
+    vec.extend_from_slice(&addressdepth_bytes);
+    vec.extend_from_slice(&changedepth_bytes);
+}
 
