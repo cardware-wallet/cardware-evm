@@ -48,7 +48,6 @@ impl Wallet {
             imported_contracts: Vec::new(),
         }
     }
-
     pub async fn sync(&mut self) -> String {
         let url = self.infura_url.clone();
         let client = reqwest::Client::new();
@@ -134,7 +133,6 @@ impl Wallet {
             "Error: Infura error.".to_string()
         }
     }
-
     //fee rate determines tx fee, 0 = slow, 1 = medium, 2 = fast
     pub fn send(&self,to: String,value: &str,fee_rate : i32) -> String {
         // Convert the value from a decimal string to U256
@@ -195,7 +193,7 @@ impl Wallet {
         //return chunk_and_label(&final_str,40);
         return final_str;
     }
-    pub async fn import_contract(&mut self, contract_address: String) -> String {
+    pub async fn validate_and_import_contract(&mut self, contract_address: String) -> String {
         let url = self.infura_url.clone();
         let client = reqwest::Client::new();
         let request_body = json!({
@@ -236,7 +234,6 @@ impl Wallet {
             return "Error: Infura error.".to_string();
         }
     }
-
     pub fn erc20_transfer(&self, contract_address: String, recipient: String, token_amount: &str, fee_rate: i32) -> String {
         // Use a higher gas limit for token transfers.
         let gas_limit: u64 = 60000;
@@ -269,11 +266,68 @@ impl Wallet {
         let mut tx_hash = [0u8; 32];
         hasher.update(&rlp_encoded);
         hasher.finalize(&mut tx_hash);
+        let mut total_bytes : Vec<u8> = Vec::new();
+        total_bytes.extend_from_slice(&tx_hash);
+        match extract_u16s(&self.account_derivation_path) {
+            Ok((first, second)) => append_integers_as_bytes(&mut total_bytes,first,second),
+            Err(_) => return "Error: Derivation path error.".to_string(),
+        }
         let unsigned_tx = hex::encode(rlp_encoded);
-        let final_str = unsigned_tx + ":&" + &base64::encode(&tx_hash);
+        let final_str = unsigned_tx + ":&" + &base64::encode(&total_bytes);
         final_str
     }
+    pub async fn erc20_balance(&self, contract_address: String) -> String {
+        // Clean and pad the wallet address parameter.
+        let wallet_addr_clean = self.address.trim_start_matches("0x");
+        let padded_wallet_addr = format!("{:0>64}", wallet_addr_clean);
+        // Construct the call data for balanceOf(address) with selector "70a08231".
+        let call_data = format!("0x70a08231{}", padded_wallet_addr);
+        let req_body = json!({
+            "jsonrpc": "2.0",
+            "method": "eth_call",
+            "params": [
+                {
+                    "to": contract_address,
+                    "data": call_data
+                },
+                "latest"
+            ],
+            "id": 1
+        });
+        let client = Client::new();
+        let response = match client
+            .post(&self.infura_url)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&req_body)
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(_) => return "Error: Infura error.".to_string(),
+        };
 
+        if response.status().is_success() {
+            let body = response.text().await.unwrap();
+            let parsed: Value = match serde_json::from_str(&body) {
+                Ok(val) => val,
+                Err(_) => return "Error: JSON parse error.".to_string(),
+            };
+
+            let result_str = match parsed.get("result").and_then(|r| r.as_str()) {
+                Some(r) => r,
+                None => return "Error: Unexpected JSON format.".to_string(),
+            };
+
+            let balance_u256 = match U256::from_str_radix(result_str.trim_start_matches("0x"), 16) {
+                Ok(val) => val,
+                Err(_) => return "Error: Balance parse error.".to_string(),
+            };
+
+            balance_u256.to_string()
+        } else {
+            "Error: Infura error.".to_string()
+        }
+    }
     pub async fn broadcast(&mut self, unsigned_tx: String,tx_signature : String) -> String {
 
         let unsigned_tx_hex = unsigned_tx.trim_start_matches("0x");
@@ -394,9 +448,8 @@ impl Wallet {
                 }
             }
         }
-        return "done".to_string();
+        return "Error".to_string();
     }
-
     pub fn address(&mut self) -> String{
     	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1 
         println!("xpub tmp {:?}",xpub_tmp_str);

@@ -25,4 +25,4 @@ bitcoin = { version="0.32", features=["base64"]}
 bs58 = {version="0.4",features=["check"]}
 
 #This dependancy is just for testing and isn't needed for build outs and stops wasm-pack build
-tokio = { version = "1", features = ["full"]}
+#tokio = { version = "1", features = ["full"]}
