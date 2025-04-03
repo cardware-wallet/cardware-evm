@@ -5,7 +5,7 @@ export const __wbg_wallet_free: (a: number, b: number) => void;
 export const wallet_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint) => number;
 export const wallet_sync: (a: number) => any;
 export const wallet_send: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
-export const wallet_validate_and_import_contract: (a: number, b: number, c: number) => any;
+export const wallet_validate_contract: (a: number, b: number, c: number) => any;
 export const wallet_erc20_transfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
 export const wallet_erc20_balance: (a: number, b: number, c: number) => any;
 export const wallet_broadcast: (a: number, b: number, c: number, d: number, e: number) => any;
@@ -25,5 +25,5 @@ export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) =>
 export const __wbindgen_export_5: WebAssembly.Table;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const closure169_externref_shim: (a: number, b: number, c: any) => void;
-export const closure217_externref_shim: (a: number, b: number, c: any, d: any) => void;
+export const closure220_externref_shim: (a: number, b: number, c: any, d: any) => void;
 export const __wbindgen_start: () => void;

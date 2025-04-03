@@ -16,8 +16,6 @@ async fn main() {
     let fee_est = wal.estimate_fee(1);
     println!("fee est: {:?}",fee_est);
 
-    let imp_res = wal.validate_and_import_contract("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()).await;
-    println!("imp res: {:?}",imp_res);
 
     let erc_bal = wal.erc20_balance("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()).await;
     println!("erc20 bal: {:?}",erc_bal);
@@ -31,8 +29,11 @@ async fn main() {
 
     println!("erc 20 send: {:?}",erc_20_send);
 
-    let res3 = wal.broadcast("f8680184227cdb3982ea6094dac17f958d2ee523a2206206994597c13d831ec780b844a9059cbb00000000000000000000000002a8665a18bba2d1b4766e2d71977a781b97592e00000000000000000000000000000000000000000000000000000000000186a0018080".to_string(),
-                              "vkeiYDUHvCej0kNIQe6FivwXH0ZxSDNxGvEBzbmAWMkiTVPnEIXUr4doFa+DWQsCm4EGDuL9onZQq8gXdqEGahs=".to_string()).await; 
-    println!("res3: {:?}",res3); 
-
+    //let res3 = wal.broadcast("f8680184227cdb3982ea6094dac17f958d2ee523a2206206994597c13d831ec780b844a9059cbb00000000000000000000000002a8665a18bba2d1b4766e2d71977a781b97592e00000000000000000000000000000000000000000000000000000000000186a0018080".to_string(),
+    //                          "vkeiYDUHvCej0kNIQe6FivwXH0ZxSDNxGvEBzbmAWMkiTVPnEIXUr4doFa+DWQsCm4EGDuL9onZQq8gXdqEGahs=".to_string()).await; 
+    //println!("res3: {:?}",res3); 
+    let con_data = wal.validate_contract("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()).await;
+    println!("");
+    println!("contract data {}: ",con_data);
+    println!("");
 }

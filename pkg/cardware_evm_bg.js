@@ -210,7 +210,7 @@ function __wbg_adapter_26(arg0, arg1, arg2) {
 }
 
 function __wbg_adapter_100(arg0, arg1, arg2, arg3) {
-    wasm.closure217_externref_shim(arg0, arg1, arg2, arg3);
+    wasm.closure220_externref_shim(arg0, arg1, arg2, arg3);
 }
 
 const __wbindgen_enum_RequestCredentials = ["omit", "same-origin", "include"];
@@ -285,10 +285,10 @@ export class Wallet {
      * @param {string} contract_address
      * @returns {Promise<string>}
      */
-    validate_and_import_contract(contract_address) {
+    validate_contract(contract_address) {
         const ptr0 = passStringToWasm0(contract_address, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wallet_validate_and_import_contract(this.__wbg_ptr, ptr0, len0);
+        const ret = wasm.wallet_validate_contract(this.__wbg_ptr, ptr0, len0);
         return ret;
     }
     /**
@@ -652,7 +652,7 @@ export function __wbindgen_cb_drop(arg0) {
     return ret;
 };
 
-export function __wbindgen_closure_wrapper508(arg0, arg1, arg2) {
+export function __wbindgen_closure_wrapper512(arg0, arg1, arg2) {
     const ret = makeMutClosure(arg0, arg1, 170, __wbg_adapter_26);
     return ret;
 };

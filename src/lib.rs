@@ -27,9 +27,7 @@ pub struct Wallet{
     eth_balance : f64,
     balance: String,
     gas_price: String,
-    imported_contracts: Vec<String>,
 }
-
 
 #[wasm_bindgen]
 impl Wallet {
@@ -45,7 +43,6 @@ impl Wallet {
             eth_balance:0.0,
             balance: "0".to_string(),
             gas_price: "0".to_string(),
-            imported_contracts: Vec::new(),
         }
     }
     pub async fn sync(&mut self) -> String {
@@ -148,16 +145,6 @@ impl Wallet {
         }
         println!("gas price {:?}",new_gas_price);
 
-        // Decode the data payload from hex if provided
-        /*
-        let data_bytes = match data {
-            Some(d) => {
-                let trimmed = d.trim_start_matches("0x");
-                hex::decode(trimmed).unwrap_or_else(|_| Vec::new())
-            }
-            None => Vec::new(),
-        };
-        */
         // RLP encode the transaction according to EIP-155.
         // The list of fields for signing is:
         // [ nonce, gas_price, gas_limit, to, value, data, chain_id, 0, 0 ]
@@ -193,47 +180,131 @@ impl Wallet {
         //return chunk_and_label(&final_str,40);
         return final_str;
     }
-    pub async fn validate_and_import_contract(&mut self, contract_address: String) -> String {
+    pub async fn validate_contract(&mut self, contract_address: String) -> String {
         let url = self.infura_url.clone();
         let client = reqwest::Client::new();
-        let request_body = json!({
-            "jsonrpc": "2.0",
-            "method": "eth_getCode",
-            "params": [contract_address.clone(), "latest"],
-            "id": 1,
-        });
+
+        // Batch JSON-RPC requests for decimals, symbol, and name.
+        let batch_request = json!([
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [{
+                    "to": contract_address.clone(),
+                    "data": "0x313ce567" // decimals()
+                }, "latest"],
+                "id": 1
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [{
+                    "to": contract_address.clone(),
+                    "data": "0x95d89b41" // symbol()
+                }, "latest"],
+                "id": 2
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [{
+                    "to": contract_address.clone(),
+                    "data": "0x06fdde03" // name()
+                }, "latest"],
+                "id": 3
+            }
+        ]);
+
         let response = match client
             .post(&url)
             .header(CONTENT_TYPE, "application/json")
-            .json(&request_body)
+            .json(&batch_request)
             .send()
             .await
         {
             Ok(resp) => resp,
-            Err(_) => return "Error: Infura error.".to_string(),
+            Err(_) => return "{\"error\": \"Infura error during batch request.\"}".to_string(),
         };
 
-        if response.status().is_success() {
-            let body = response.text().await.unwrap();
-            let parsed: Value = match serde_json::from_str(&body) {
-                Ok(val) => val,
-                Err(_) => return "Error: JSON parse error.".to_string(),
-            };
-
-            let code = match parsed.get("result").and_then(|r| r.as_str()) {
-                Some(c) => c,
-                None => return "Error: Unexpected JSON format.".to_string(),
-            };
-            if code == "0x" || code == "0x0" {
-                return "Error: No contract code found at this address.".to_string();
-            } else {
-                self.imported_contracts.push(contract_address.clone());
-                return format!("Contract {} imported successfully.", contract_address);
-            }
-        } else {
-            return "Error: Infura error.".to_string();
+        if !response.status().is_success() {
+            return "{\"error\": \"Infura error during batch request.\"}".to_string();
         }
+
+        let body = response.text().await.unwrap();
+        let responses: Value = match serde_json::from_str(&body) {
+            Ok(val) => val,
+            Err(_) => return "{\"error\": \"JSON parse error during batch request.\"}".to_string(),
+        };
+
+        let responses_array = match responses.as_array() {
+            Some(arr) => arr,
+            None => return "{\"error\": \"Unexpected JSON format in batch response.\"}".to_string(),
+        };
+
+        // Initialize empty strings for each response.
+        let mut decimals_hex = "";
+        let mut symbol_hex = "";
+        let mut name_hex = "";
+
+        // Iterate through responses, matching each by its id.
+        for resp in responses_array {
+            if let Some(id) = resp.get("id").and_then(|v| v.as_i64()) {
+                match id {
+                    1 => {
+                        decimals_hex = resp.get("result").and_then(|r| r.as_str()).unwrap_or("");
+                    },
+                    2 => {
+                        symbol_hex = resp.get("result").and_then(|r| r.as_str()).unwrap_or("");
+                    },
+                    3 => {
+                        name_hex = resp.get("result").and_then(|r| r.as_str()).unwrap_or("");
+                    },
+                    _ => {},
+                }
+            }
+        }
+
+        // Decode decimals using hex_to_vec directly.
+        let decimals = match hex_to_vec(decimals_hex.trim_start_matches("0x")) {
+            Some(mut bytes) => {
+                // Remove any leading zeros.
+                while !bytes.is_empty() && bytes[0] == 0 {
+                    bytes.remove(0);
+                }
+                let value = if bytes.is_empty() {
+                    0u64
+                } else {
+                    bytes.into_iter().fold(0u64, |acc, b| acc * 256 + b as u64)
+                };
+                if value <= u8::MAX as u64 {
+                    value as u8
+                } else {
+                    return "{\"error\": \"Decimals value out of range.\"}".to_string();
+                }
+            },
+            None => return "{\"error\": \"Failed to decode decimals.\"}".to_string(),
+        };
+
+        let symbol = match decode_abi_string(symbol_hex) {
+            Some(s) => s,
+            None => return "{\"error\": \"Failed to decode symbol.\"}".to_string(),
+        };
+
+        let name = match decode_abi_string(name_hex) {
+            Some(n) => n,
+            None => return "{\"error\": \"Failed to decode name.\"}".to_string(),
+        };
+
+        // Assemble the contract data into a JSON object and return it as a string.
+        let contract_data = json!({
+             "address": contract_address,
+             "decimals": decimals,
+             "symbol": symbol,
+             "name": name,
+        });
+        contract_data.to_string()
     }
+
     pub fn erc20_transfer(&self, contract_address: String, recipient: String, token_amount: &str, fee_rate: i32) -> String {
         // Use a higher gas limit for token transfers.
         let gas_limit: u64 = 60000;
@@ -277,10 +348,10 @@ impl Wallet {
         final_str
     }
     pub async fn erc20_balance(&self, contract_address: String) -> String {
-        // Clean and pad the wallet address parameter.
+
         let wallet_addr_clean = self.address.trim_start_matches("0x");
         let padded_wallet_addr = format!("{:0>64}", wallet_addr_clean);
-        // Construct the call data for balanceOf(address) with selector "70a08231".
+
         let call_data = format!("0x70a08231{}", padded_wallet_addr);
         let req_body = json!({
             "jsonrpc": "2.0",
@@ -424,12 +495,6 @@ impl Wallet {
         let signed_tx_bytes = stream.out().to_vec();
         let signed_tx_hex = format!("0x{}", hex::encode(&signed_tx_bytes));
         println!("signed tx: {:?}",signed_tx_hex);
-        /*
-        let tx_hex = if let Ok(decoded) = base64::decode(&tx_signature) {
-            hex::encode(decoded)
-        } else {
-            signed_tx
-        };*/
         
         let client = Client::new();
         let req_body = json!({
@@ -538,6 +603,27 @@ pub fn hex_to_vec(hex_string: &str) -> Option<Vec<u8>> {
     }
     Some(bytes)
 }
+fn decode_abi_string(hex_str: &str) -> Option<String> {
+    let hex = hex_str.trim_start_matches("0x");
+    if hex.len() >= 128 {
+        // The first 64 characters are the offset; the next 64 characters contain the string length.
+        let len_hex = &hex[64..128];
+        let len = usize::from_str_radix(len_hex, 16).ok()?;
+        let start = 128;
+        let end = start + len * 2;
+        if hex.len() < end {
+            return None;
+        }
+        let data_hex = &hex[start..end];
+        let bytes = hex_to_vec(data_hex)?;
+        String::from_utf8(bytes).ok()
+    } else {
+        let bytes = hex_to_vec(hex)?;
+        let s = bytes.into_iter().take_while(|&b| b != 0).collect::<Vec<u8>>();
+        String::from_utf8(s).ok()
+    }
+}
+
 pub fn wei_to_eth(wei: U256) -> f64 {
     // Convert U256 to a string, then parse as f64.
     // Note: This approach works well for typical balances,
