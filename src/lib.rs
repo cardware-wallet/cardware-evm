@@ -553,9 +553,9 @@ impl Wallet {
         let mut new_gas_price : U256 = U256::zero();
         let self_gas = gas_price_from_string(&self.gas_price);
         match fee_rate{
-            0 => new_gas_price = &self_gas * U256::from(9) / U256::from(10),
-            1 => new_gas_price = self_gas,
-            2 => new_gas_price = &self_gas * U256::from(11) / U256::from(10) ,
+            0 => new_gas_price = &self_gas * U256::from(10) / U256::from(10),
+            1 => new_gas_price = &self_gas * U256::from(15) / U256::from(10),
+            2 => new_gas_price = &self_gas * U256::from(20) / U256::from(10) ,
             _ => new_gas_price = self_gas,
         }
         new_gas_price = new_gas_price * U256::from(gas_limit);
