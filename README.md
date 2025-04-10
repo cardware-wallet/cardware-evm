@@ -1,18 +1,17 @@
-# cardware-evm
-EDGE CASE ERROR:
+# Cardware EVM NPM Library
 
-If you see an error that looks like this:
+This is the documentation for the EVM NPM package that communicates with the Cardware device.
 
-  Internal error occurred: Command "/opt/homebrew/Cellar/llvm/17.0.2/bin/clang-17" "-O3" "-ffunction-sections" "-fdata-sections" "-fPIC" "--target=wasm32-unknown-unknown" "-Wall" "-Wextra" "-o" "/Users/dom/Documents/Rust/scl_wallet/target/wasm32-unknown-unknown/release/build/rust-crypto-wasm-71b19d49c9aa1fe2/out/src/util_helpers.o" "-c" "src/util_helpers.c" with args "clang-17" did not execute successfully (status code exit status: 1).
+The library requires an rpc endpoint to query an EVM based blockchain.
 
-This is caused by a rust compilation order of operations problem
+It allows users to create a watch-only wallet on the web.
 
-The solution is to:
+All data that is transferred between the web wallet and the Cardware device is done through scanning QR codes.
 
-	1) Exit your terminal window and quit terminal
+Users must first pair the web wallet with their Cardware device.
 
-	2) Navigate to your working directory and run "wasm-pack build" this will fail with a C_Linker error
+Once paired they are then able to view the EVM address of their Cardware device, see their confirmed and unconfirmed EVM balances and send EVM tokens from their Cardware device.
 
-	3) Export your C_Linker using: "export TARGET_CC=/opt/homebrew/Cellar/llvm/18.1.8/bin/clang-18"
+When sending, the watch only wallet will create an unsigned transaction which will be split up into QR codes. The user will then be prompted to scan these QR codes with their Cardware device. The user will then confirm the transactions details which will then create a signed transaction which their Cardware device will split up into QR codes. The web wallet then scans these QR codes, decodes them and broadcasts the transaction.
 
-	4) Re-run "wasm-pack build" this time it will work (black magic!)
+---

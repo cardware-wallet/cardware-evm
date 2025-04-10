@@ -131,7 +131,7 @@ impl Wallet {
         }
     }
     //fee rate determines tx fee, 0 = slow, 1 = medium, 2 = fast
-    pub fn send(&self,to: String,value: &str,fee_rate : i32) -> String {
+    pub fn send(&self, to: String, value: &str, fee_rate : i32) -> String {
         // Convert the value from a decimal string to U256
         let gas_limit : u64 = 21000;
         let value_u256 = U256::from_dec_str(value).unwrap_or(U256::zero());
@@ -143,7 +143,6 @@ impl Wallet {
             2 => new_gas_price = &self_gas * U256::from(20) / U256::from(10),
             _ => new_gas_price = self_gas,
         }
-        println!("gas price {:?}",new_gas_price);
 
         // RLP encode the transaction according to EIP-155.
         // The list of fields for signing is:
@@ -394,11 +393,11 @@ impl Wallet {
             return "Error: Infura error.".to_string();
         }
     }
-    pub async fn broadcast(&mut self, unsigned_tx: String,tx_signature : String) -> String {
+    pub async fn broadcast(&mut self, unsigned_tx: String, tx_signature : String) -> String {
         let unsigned_tx_hex = unsigned_tx.trim_start_matches("0x");
         let unsigned_tx_bytes = match hex::decode(unsigned_tx_hex){
             Ok(bytes) => bytes,
-            Err(_) => return "error.".to_string(),
+            Err(_) => return "Error: Failed to decode the unsigned transaction.".to_string(),
         };
 
         // Decode the unsigned transaction RLP.
@@ -408,63 +407,63 @@ impl Wallet {
         let rlp_unsigned = Rlp::new(&unsigned_tx_bytes);
         let base_bytes = match base64::decode(&tx_signature){
             Ok(bytes) => bytes,
-            Err(_) => return "Error: Failed to decode transaction signature.".to_string()
+            Err(_) => return "Error: Failed to decode the transaction signature.".to_string()
         };
 
         let nonce = match rlp_unsigned.at(0) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "Error: Failed to decode nonce.".to_string(),
+                Err(err) => return "Error: Failed to decode the nonce.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode nonce.".to_string(),
+            Err(err) => return "Error: Failed to decode the nonce.".to_string(),
         };
 
         let gas_price = match rlp_unsigned.at(1) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) =>return "Error: Failed to decode gas price.".to_string(),
+                Err(err) =>return "Error: Failed to decode the gas price.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode gas price.".to_string(),
+            Err(err) => return "Error: Failed to decode the gas price.".to_string(),
         };
 
         let gas_limit = match rlp_unsigned.at(2) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "Error: Failed to decode gas limit.".to_string(),
+                Err(err) => return "Error: Failed to decode the gas limit.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode the gas limit.".to_string(),
         };
 
         let to = match rlp_unsigned.at(3) {
             Ok(field) => match field.data() {
                 Ok(data) => data.to_vec(),
-                Err(err) => return "Error: Failed to decode output.".to_string(),
+                Err(err) => return "Error: Failed to decode the output.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode output.".to_string(),
+            Err(err) => return "Error: Failed to decode the output.".to_string(),
         };
 
         let value = match rlp_unsigned.at(4) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "Error: Failed to decode value.".to_string(),
+                Err(err) => return "Error: Failed to decode the value.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode value.".to_string(),
+            Err(err) => return "Error: Failed to decode the value.".to_string(),
         };
 
         let data_field = match rlp_unsigned.at(5) {
             Ok(field) => match field.data() {
                 Ok(data) => data.to_vec(),
-                Err(err) => return "Error: Failed to decode data field.".to_string(),
+                Err(err) => return "Error: Failed to decode the data field.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode data field.".to_string(),
+            Err(err) => return "Error: Failed to decode the data field.".to_string(),
         };
 
         let chain_id = match rlp_unsigned.at(6) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(e) => return "Error: Failed to decode chain ID".to_string(),
+                Err(e) => return "Error: Failed to decode the chain ID.".to_string(),
             },
-            Err(e) => return "Error: Failed to decode chain ID".to_string(),
+            Err(e) => return "Error: Failed to decode the chain ID.".to_string(),
         };
 
         let r_sig = &base_bytes[0..32];
@@ -510,12 +509,12 @@ impl Wallet {
     	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1
         let xpub = match Xpub::from_str(&xpub_tmp_str){
             Ok(xpub) => xpub,
-            Err(_) => return "Error: Xpub derivation error.".to_string(),
+            Err(_) => return "Error: zPub derivation error.".to_string(),
         };
         let derivation_path = DerivationPath::from_str(&self.account_derivation_path).unwrap();
         let derived_xpub = match xpub.derive_pub(&bitcoin::secp256k1::Secp256k1::new(), &derivation_path){
             Ok(derived_xpub) => derived_xpub,
-            Err(_) => return "Error: Xpub derivation error.".to_string(),
+            Err(_) => return "Error: zPub derivation error.".to_string(),
         };
         let public_key = PublicKey::new_uncompressed(
             derived_xpub.public_key
@@ -536,7 +535,7 @@ impl Wallet {
     }
     //fee rate, 0 = slow, 1 = medium, 2 = fast
     pub fn estimate_fee(&self, fee_rate : i32) -> String{
-        let gas_limit = 21000;
+        let gas_limit = 160000;
         let mut new_gas_price : U256 = U256::zero();
         let self_gas = gas_price_from_string(&self.gas_price);
         match fee_rate{
@@ -546,7 +545,7 @@ impl Wallet {
             _ => new_gas_price = self_gas,
         }
         new_gas_price = new_gas_price * U256::from(gas_limit);
-        return format!("{}",wei_to_eth(new_gas_price));
+        return format!("{}", wei_to_eth(new_gas_price));
     }
     pub fn nonce(&self) -> u64 {
         self.nonce
