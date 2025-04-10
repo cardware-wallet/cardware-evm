@@ -509,12 +509,12 @@ impl Wallet {
     	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1
         let xpub = match Xpub::from_str(&xpub_tmp_str){
             Ok(xpub) => xpub,
-            Err(_) => return "Error: Xpub derivation error.".to_string(),
+            Err(_) => return "Error: zPub derivation error.".to_string(),
         };
         let derivation_path = DerivationPath::from_str(&self.account_derivation_path).unwrap();
         let derived_xpub = match xpub.derive_pub(&bitcoin::secp256k1::Secp256k1::new(), &derivation_path){
             Ok(derived_xpub) => derived_xpub,
-            Err(_) => return "Error: Xpub derivation error.".to_string(),
+            Err(_) => return "Error: zPub derivation error.".to_string(),
         };
         let public_key = PublicKey::new_uncompressed(
             derived_xpub.public_key
