@@ -408,29 +408,29 @@ impl Wallet {
         let rlp_unsigned = Rlp::new(&unsigned_tx_bytes);
         let base_bytes = match base64::decode(&tx_signature){
             Ok(bytes) => bytes,
-            Err(_) => return "era".to_string(),
+            Err(_) => return "Error: Failed to decode transaction signature.".to_string()
         };
 
         let nonce = match rlp_unsigned.at(0) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode nonce.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode nonce.".to_string(),
         };
 
         let gas_price = match rlp_unsigned.at(1) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) =>return "error.".to_string(),
+                Err(err) =>return "Error: Failed to decode gas price.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode gas price.".to_string(),
         };
 
         let gas_limit = match rlp_unsigned.at(2) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode gas limit.".to_string(),
             },
             Err(err) => return "error.".to_string(),
         };
@@ -438,33 +438,33 @@ impl Wallet {
         let to = match rlp_unsigned.at(3) {
             Ok(field) => match field.data() {
                 Ok(data) => data.to_vec(),
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode output.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode output.".to_string(),
         };
 
         let value = match rlp_unsigned.at(4) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode value.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode value.".to_string(),
         };
 
         let data_field = match rlp_unsigned.at(5) {
             Ok(field) => match field.data() {
                 Ok(data) => data.to_vec(),
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode data field.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode data field.".to_string(),
         };
 
         let chain_id = match rlp_unsigned.at(6) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(e) => return "erro".to_string(),
+                Err(e) => return "Error: Failed to decode chain ID".to_string(),
             },
-            Err(e) => return "erro".to_string(),
+            Err(e) => return "Error: Failed to decode chain ID".to_string(),
         };
 
         let r_sig = &base_bytes[0..32];
@@ -504,7 +504,7 @@ impl Wallet {
                 }
             }
         }
-        return "Error".to_string();
+        return "Error: Failed to broadcast transaction.".to_string();
     }
     pub fn address(&mut self) -> String{
     	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1
@@ -634,7 +634,6 @@ pub fn chunk_and_label(final_str: &str, chunk_size: usize) -> Vec<String> {
         })
         .collect() // Collect into a vector of strings
 }
-
 // Helper function to encode ERC20 transfer data.
 pub fn encode_transfer(recipient: &str, amount: U256) -> Vec<u8> {
     let mut data = Vec::new();
