@@ -37,10 +37,10 @@ impl Wallet {
             infura_url,
             xpub,
             account_derivation_path,
-            address:"".to_string(),
+            address: "".to_string(),
             chain_id,
             nonce: 0,
-            eth_balance:0.0,
+            eth_balance: 0.0,
             balance: "0".to_string(),
             gas_price: "0".to_string(),
         }
@@ -125,22 +125,22 @@ impl Wallet {
                     _ => {}
                 }
             }
-            "Sync successful.".to_string()
+            return "Sync successful.".to_string();
         } else {
-            "Error: Infura error.".to_string()
+            return "Error: Infura error.".to_string();
         }
     }
     //fee rate determines tx fee, 0 = slow, 1 = medium, 2 = fast
     pub fn send(&self,to: String,value: &str,fee_rate : i32) -> String {
         // Convert the value from a decimal string to U256
-        let gas_limit : u64= 21000;
+        let gas_limit : u64 = 21000;
         let value_u256 = U256::from_dec_str(value).unwrap_or(U256::zero());
         let mut new_gas_price : U256 = U256::zero();
         let self_gas = gas_price_from_string(&self.gas_price);
         match fee_rate{
             0 => new_gas_price = &self_gas * U256::from(10) / U256::from(10),
             1 => new_gas_price = self_gas * U256::from(15) / U256::from(10),
-            2 => new_gas_price = &self_gas * U256::from(20) / U256::from(10) ,
+            2 => new_gas_price = &self_gas * U256::from(20) / U256::from(10),
             _ => new_gas_price = self_gas,
         }
         println!("gas price {:?}",new_gas_price);
@@ -175,9 +175,6 @@ impl Wallet {
 
         // Return the unsigned transaction as a hex string.
         let final_str = unsigned_tx + ":&" + &base64::encode(&total_bytes);
-        //let final_str = unsigned_tx + ":&" + &hex::encode(&tx_hash);
-        //let final_str = &base64::encode(&tx_hash);
-        //return chunk_and_label(&final_str,40);
         return final_str;
     }
     pub async fn validate_contract(&mut self, contract_address: String) -> String {
@@ -223,22 +220,22 @@ impl Wallet {
             .await
         {
             Ok(resp) => resp,
-            Err(_) => return "{\"error\": \"Infura error during batch request.\"}".to_string(),
+            Err(_) => return "Error: Infura error during batch request.".to_string(),
         };
 
         if !response.status().is_success() {
-            return "{\"error\": \"Infura error during batch request.\"}".to_string();
+            return "Error: Infura error during batch request.".to_string();
         }
 
         let body = response.text().await.unwrap();
         let responses: Value = match serde_json::from_str(&body) {
             Ok(val) => val,
-            Err(_) => return "{\"error\": \"JSON parse error during batch request.\"}".to_string(),
+            Err(_) => return "Error: JSON parse error during batch request.".to_string(),
         };
 
         let responses_array = match responses.as_array() {
             Some(arr) => arr,
-            None => return "{\"error\": \"Unexpected JSON format in batch response.\"}".to_string(),
+            None => return "Error: Unexpected JSON format in batch response.".to_string(),
         };
 
         // Initialize empty strings for each response.
@@ -279,20 +276,20 @@ impl Wallet {
                 if value <= u8::MAX as u64 {
                     value as u8
                 } else {
-                    return "{\"error\": \"Decimals value out of range.\"}".to_string();
+                    return "Error: Decimals value out of range.".to_string();
                 }
             },
-            None => return "{\"error\": \"Failed to decode decimals.\"}".to_string(),
+            None => return "Error: Failed to decode decimals.".to_string(),
         };
 
         let symbol = match decode_abi_string(symbol_hex) {
             Some(s) => s,
-            None => return "{\"error\": \"Failed to decode symbol.\"}".to_string(),
+            None => return "Error: Failed to decode symbol.".to_string(),
         };
 
         let name = match decode_abi_string(name_hex) {
             Some(n) => n,
-            None => return "{\"error\": \"Failed to decode name.\"}".to_string(),
+            None => return "Error: Failed to decode name.".to_string(),
         };
 
         // Assemble the contract data into a JSON object and return it as a string.
@@ -302,9 +299,8 @@ impl Wallet {
              "symbol": symbol,
              "name": name,
         });
-        contract_data.to_string()
+        return contract_data.to_string();
     }
-
     pub fn erc20_transfer(&self, contract_address: String, recipient: String, token_amount: &str, fee_rate: i32) -> String {
         // Use a higher gas limit for token transfers.
         let gas_limit: u64 = 160000;
@@ -345,10 +341,9 @@ impl Wallet {
         }
         let unsigned_tx = hex::encode(rlp_encoded);
         let final_str = unsigned_tx + ":&" + &base64::encode(&total_bytes);
-        final_str
+        return final_str;
     }
     pub async fn erc20_balance(&self, contract_address: String) -> String {
-
         let wallet_addr_clean = self.address.trim_start_matches("0x");
         let padded_wallet_addr = format!("{:0>64}", wallet_addr_clean);
 
@@ -394,13 +389,12 @@ impl Wallet {
                 Err(_) => return "Error: Balance parse error.".to_string(),
             };
 
-            balance_u256.to_string()
+            return balance_u256.to_string();
         } else {
-            "Error: Infura error.".to_string()
+            return "Error: Infura error.".to_string();
         }
     }
     pub async fn broadcast(&mut self, unsigned_tx: String,tx_signature : String) -> String {
-
         let unsigned_tx_hex = unsigned_tx.trim_start_matches("0x");
         let unsigned_tx_bytes = match hex::decode(unsigned_tx_hex){
             Ok(bytes) => bytes,
@@ -414,29 +408,29 @@ impl Wallet {
         let rlp_unsigned = Rlp::new(&unsigned_tx_bytes);
         let base_bytes = match base64::decode(&tx_signature){
             Ok(bytes) => bytes,
-            Err(_) => return "era".to_string(),
+            Err(_) => return "Error: Failed to decode transaction signature.".to_string()
         };
 
         let nonce = match rlp_unsigned.at(0) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode nonce.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode nonce.".to_string(),
         };
 
         let gas_price = match rlp_unsigned.at(1) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) =>return "error.".to_string(),
+                Err(err) =>return "Error: Failed to decode gas price.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode gas price.".to_string(),
         };
 
         let gas_limit = match rlp_unsigned.at(2) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode gas limit.".to_string(),
             },
             Err(err) => return "error.".to_string(),
         };
@@ -444,43 +438,41 @@ impl Wallet {
         let to = match rlp_unsigned.at(3) {
             Ok(field) => match field.data() {
                 Ok(data) => data.to_vec(),
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode output.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode output.".to_string(),
         };
 
         let value = match rlp_unsigned.at(4) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode value.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode value.".to_string(),
         };
 
         let data_field = match rlp_unsigned.at(5) {
             Ok(field) => match field.data() {
                 Ok(data) => data.to_vec(),
-                Err(err) => return "error.".to_string(),
+                Err(err) => return "Error: Failed to decode data field.".to_string(),
             },
-            Err(err) => return "error.".to_string(),
+            Err(err) => return "Error: Failed to decode data field.".to_string(),
         };
 
         let chain_id = match rlp_unsigned.at(6) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(e) => return "erro".to_string(),
+                Err(e) => return "Error: Failed to decode chain ID".to_string(),
             },
-            Err(e) => return "erro".to_string(),
+            Err(e) => return "Error: Failed to decode chain ID".to_string(),
         };
 
-        println!("{:?}",base_bytes);
         let r_sig = &base_bytes[0..32];
         let s_sig = &base_bytes[32..64];
         let v_sig = base_bytes[64];
         
         let recovery_id = if v_sig > 1 { v_sig - 27 } else { v_sig };
         let v_eip155 = chain_id.low_u64() * 2 + 35 + recovery_id as u64;
-        println!("v_eip155 :{:?}",v_eip155);
         let mut stream = RlpStream::new_list(9);
         stream.append(&nonce);
         stream.append(&gas_price);
@@ -494,7 +486,6 @@ impl Wallet {
 
         let signed_tx_bytes = stream.out().to_vec();
         let signed_tx_hex = format!("0x{}", hex::encode(&signed_tx_bytes));
-        println!("signed tx: {:?}",signed_tx_hex);
         
         let client = Client::new();
         let req_body = json!({
@@ -513,27 +504,23 @@ impl Wallet {
                 }
             }
         }
-        return "Error".to_string();
+        return "Error: Failed to broadcast transaction.".to_string();
     }
     pub fn address(&mut self) -> String{
-    	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1 
-        println!("xpub tmp {:?}",xpub_tmp_str);
+    	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1
         let xpub = match Xpub::from_str(&xpub_tmp_str){
             Ok(xpub) => xpub,
             Err(_) => return "Error: Xpub derivation error.".to_string(),
         };
-        println!("xpub1 {}:",xpub);
         let derivation_path = DerivationPath::from_str(&self.account_derivation_path).unwrap();
         let derived_xpub = match xpub.derive_pub(&bitcoin::secp256k1::Secp256k1::new(), &derivation_path){
             Ok(derived_xpub) => derived_xpub,
             Err(_) => return "Error: Xpub derivation error.".to_string(),
         };
-        println!("xpub2 {}:",derived_xpub);
         let public_key = PublicKey::new_uncompressed(
             derived_xpub.public_key
         );
         let uncompressed = public_key.to_bytes();
-        println!("pubkey {}:",public_key);
 	    let public_bytes = &uncompressed[1..];
 	    // Hash with Keccak-256
 	    let mut hasher = Keccak::v256();
@@ -555,7 +542,7 @@ impl Wallet {
         match fee_rate{
             0 => new_gas_price = &self_gas * U256::from(10) / U256::from(10),
             1 => new_gas_price = &self_gas * U256::from(15) / U256::from(10),
-            2 => new_gas_price = &self_gas * U256::from(20) / U256::from(10) ,
+            2 => new_gas_price = &self_gas * U256::from(20) / U256::from(10),
             _ => new_gas_price = self_gas,
         }
         new_gas_price = new_gas_price * U256::from(gas_limit);
@@ -580,9 +567,8 @@ pub fn convert_to_xpub(xpub_str : String) -> String{
     return bs58::encode(vec).with_check().into_string();
 }
 fn gas_price_to_string(gas_price: U256) -> String {
-    gas_price.to_string()
+    return gas_price.to_string();
 }
-
 // Convert a decimal string to a U256 gas price.
 fn gas_price_from_string(s: &str) -> U256 {
     let res = match U256::from_dec_str(s){
@@ -601,7 +587,7 @@ pub fn hex_to_vec(hex_string: &str) -> Option<Vec<u8>> {
             return None; 
         }
     }
-    Some(bytes)
+    return Some(bytes);
 }
 fn decode_abi_string(hex_str: &str) -> Option<String> {
     let hex = hex_str.trim_start_matches("0x");
@@ -616,14 +602,13 @@ fn decode_abi_string(hex_str: &str) -> Option<String> {
         }
         let data_hex = &hex[start..end];
         let bytes = hex_to_vec(data_hex)?;
-        String::from_utf8(bytes).ok()
+        return String::from_utf8(bytes).ok();
     } else {
         let bytes = hex_to_vec(hex)?;
         let s = bytes.into_iter().take_while(|&b| b != 0).collect::<Vec<u8>>();
-        String::from_utf8(s).ok()
+        return String::from_utf8(s).ok();
     }
 }
-
 pub fn wei_to_eth(wei: U256) -> f64 {
     // Convert U256 to a string, then parse as f64.
     // Note: This approach works well for typical balances,
@@ -634,7 +619,7 @@ pub fn wei_to_eth(wei: U256) -> f64 {
         Err(_) => return 0.0,
     };
     // Divide by 10^18 to get Ether
-    wei_f64 / 1e18
+    return wei_f64 / 1e18;
 }
 pub fn chunk_and_label(final_str: &str, chunk_size: usize) -> Vec<String> {
     let total_chunks = (final_str.len() + chunk_size - 1) / chunk_size; // Calculate the number of chunks
@@ -649,7 +634,6 @@ pub fn chunk_and_label(final_str: &str, chunk_size: usize) -> Vec<String> {
         })
         .collect() // Collect into a vector of strings
 }
-
 // Helper function to encode ERC20 transfer data.
 pub fn encode_transfer(recipient: &str, amount: U256) -> Vec<u8> {
     let mut data = Vec::new();
@@ -669,7 +653,7 @@ pub fn encode_transfer(recipient: &str, amount: U256) -> Vec<u8> {
     amount.to_big_endian(&mut amount_bytes);
     data.extend_from_slice(&amount_bytes);
 
-    data
+    return data;
 }
 pub fn extract_u16s(input: &str) -> Result<(u16, u16), &'static str> {
         let parts: Vec<&str> = input.split('/').collect();
@@ -678,7 +662,7 @@ pub fn extract_u16s(input: &str) -> Result<(u16, u16), &'static str> {
         }
         let first_u16 = parts[1].parse::<u16>().map_err(|_| "Error: Failed to parse first number.")?;
         let second_u16 = parts[2].parse::<u16>().map_err(|_| "Error: Failed to parse second number.")?;
-        Ok((first_u16, second_u16))
+        return Ok((first_u16, second_u16))
 }
 pub fn append_integers_as_bytes(vec: &mut Vec<u8>, addressdepth: u16, changedepth: u16) {
     let addressdepth_bytes = addressdepth.to_le_bytes();
