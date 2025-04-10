@@ -12,13 +12,19 @@ async fn main() {
     println!("Eth balance: {:?}",wal.balance());
     let res = wal.send("0x02A8665a18BBa2D1B4766e2D71977A781b97592e".to_string(),"544000000000",1);
     println!("RES: {:?}",res);
+
     //estimate fee example:
-    let fee_est = wal.estimate_fee(1);
+    let fee_est = wal.estimate_fee(1,21000);
     println!("fee est: {:?}",fee_est);
+    let fee_est = wal.estimate_fee(1,160000);
+    println!("fee est erc20: {:?}",fee_est);
 
 
+    //Erc20 Balance
     let erc_bal = wal.erc20_balance("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()).await;
     println!("erc20 bal: {:?}",erc_bal);
+
+    //Broadcast example
     //let res3 = wal.broadcast("ea80850cce4166008252089402a8665a18bba2d1b4766e2d71977a781b97592e857ea8ed40008081928080".to_string(),
     //                          "swUgntcRQS9BzpOfHNB9sZUbK5rwE0M9hvBAfSBohJlN6Xs2ijDS+UVz9U8/QRkYNN+yVp3y2ptBxFkaulVt8Rw=".to_string()).await; 
     //println!("res3: {:?}",res3); 
@@ -33,7 +39,5 @@ async fn main() {
                               "XQdtleo1VPCj0YGpghoStvRZB2heI+4/c5X5PdN2T9tAQSsZSa1ssE0iEDW+KK1KQrEx2ko9Mv98QOae8c/UHRw=".to_string()).await; 
     println!("res3: {:?}",res3); 
     let con_data = wal.validate_contract("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()).await;
-    //println!("");
     println!("contract data {}: ",con_data);
-    //println!("");
 }

@@ -206,11 +206,11 @@ function debugString(val) {
     return className;
 }
 function __wbg_adapter_26(arg0, arg1, arg2) {
-    wasm.closure169_externref_shim(arg0, arg1, arg2);
+    wasm.closure156_externref_shim(arg0, arg1, arg2);
 }
 
 function __wbg_adapter_100(arg0, arg1, arg2, arg3) {
-    wasm.closure220_externref_shim(arg0, arg1, arg2, arg3);
+    wasm.closure207_externref_shim(arg0, arg1, arg2, arg3);
 }
 
 const __wbindgen_enum_RequestCredentials = ["omit", "same-origin", "include"];
@@ -371,13 +371,14 @@ export class Wallet {
     }
     /**
      * @param {number} fee_rate
+     * @param {number} gas_limit
      * @returns {string}
      */
-    estimate_fee(fee_rate) {
+    estimate_fee(fee_rate, gas_limit) {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.wallet_estimate_fee(this.__wbg_ptr, fee_rate);
+            const ret = wasm.wallet_estimate_fee(this.__wbg_ptr, fee_rate, gas_limit);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -652,8 +653,8 @@ export function __wbindgen_cb_drop(arg0) {
     return ret;
 };
 
-export function __wbindgen_closure_wrapper512(arg0, arg1, arg2) {
-    const ret = makeMutClosure(arg0, arg1, 170, __wbg_adapter_26);
+export function __wbindgen_closure_wrapper495(arg0, arg1, arg2) {
+    const ret = makeMutClosure(arg0, arg1, 157, __wbg_adapter_26);
     return ret;
 };
 

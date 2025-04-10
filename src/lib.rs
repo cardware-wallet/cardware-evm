@@ -11,8 +11,6 @@ use bitcoin::bip32::DerivationPath;
 use bitcoin::PublicKey;
 use tiny_keccak::Keccak;
 use tiny_keccak::Hasher;
-use std::convert::TryFrom;
-use serde::{Deserialize, Serialize};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
 
@@ -135,7 +133,7 @@ impl Wallet {
         // Convert the value from a decimal string to U256
         let gas_limit : u64 = 21000;
         let value_u256 = U256::from_dec_str(value).unwrap_or(U256::zero());
-        let mut new_gas_price : U256 = U256::zero();
+        let new_gas_price;
         let self_gas = gas_price_from_string(&self.gas_price);
         match fee_rate{
             0 => new_gas_price = &self_gas * U256::from(10) / U256::from(10),
@@ -306,7 +304,7 @@ impl Wallet {
         let token_amount_u256 = U256::from_dec_str(token_amount).unwrap_or(U256::zero());
         // Encode the ERC20 transfer data.
         let data = encode_transfer(&recipient, token_amount_u256);
-        let mut new_gas_price: U256 = U256::zero();
+        let new_gas_price;
         let self_gas = gas_price_from_string(&self.gas_price);
          match fee_rate{
             0 => new_gas_price = &self_gas * U256::from(10) / U256::from(10),
@@ -413,57 +411,57 @@ impl Wallet {
         let nonce = match rlp_unsigned.at(0) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "Error: Failed to decode the nonce.".to_string(),
+                Err(_) => return "Error: Failed to decode the nonce.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode the nonce.".to_string(),
+            Err(_) => return "Error: Failed to decode the nonce.".to_string(),
         };
 
         let gas_price = match rlp_unsigned.at(1) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) =>return "Error: Failed to decode the gas price.".to_string(),
+                Err(_) =>return "Error: Failed to decode the gas price.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode the gas price.".to_string(),
+            Err(_) => return "Error: Failed to decode the gas price.".to_string(),
         };
 
         let gas_limit = match rlp_unsigned.at(2) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "Error: Failed to decode the gas limit.".to_string(),
+                Err(_) => return "Error: Failed to decode the gas limit.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode the gas limit.".to_string(),
+            Err(_) => return "Error: Failed to decode the gas limit.".to_string(),
         };
 
         let to = match rlp_unsigned.at(3) {
             Ok(field) => match field.data() {
                 Ok(data) => data.to_vec(),
-                Err(err) => return "Error: Failed to decode the output.".to_string(),
+                Err(_) => return "Error: Failed to decode the output.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode the output.".to_string(),
+            Err(_) => return "Error: Failed to decode the output.".to_string(),
         };
 
         let value = match rlp_unsigned.at(4) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(err) => return "Error: Failed to decode the value.".to_string(),
+                Err(_) => return "Error: Failed to decode the value.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode the value.".to_string(),
+            Err(_) => return "Error: Failed to decode the value.".to_string(),
         };
 
         let data_field = match rlp_unsigned.at(5) {
             Ok(field) => match field.data() {
                 Ok(data) => data.to_vec(),
-                Err(err) => return "Error: Failed to decode the data field.".to_string(),
+                Err(_) => return "Error: Failed to decode the data field.".to_string(),
             },
-            Err(err) => return "Error: Failed to decode the data field.".to_string(),
+            Err(_) => return "Error: Failed to decode the data field.".to_string(),
         };
 
         let chain_id = match rlp_unsigned.at(6) {
             Ok(field) => match field.as_val::<U256>() {
                 Ok(val) => val,
-                Err(e) => return "Error: Failed to decode the chain ID.".to_string(),
+                Err(_) => return "Error: Failed to decode the chain ID.".to_string(),
             },
-            Err(e) => return "Error: Failed to decode the chain ID.".to_string(),
+            Err(_) => return "Error: Failed to decode the chain ID.".to_string(),
         };
 
         let r_sig = &base_bytes[0..32];
@@ -534,9 +532,8 @@ impl Wallet {
         self.eth_balance.to_string()
     }
     //fee rate, 0 = slow, 1 = medium, 2 = fast
-    pub fn estimate_fee(&self, fee_rate : i32) -> String{
-        let gas_limit = 160000;
-        let mut new_gas_price : U256 = U256::zero();
+    pub fn estimate_fee(&self, fee_rate : i32, gas_limit : i32) -> String{
+        let mut new_gas_price;
         let self_gas = gas_price_from_string(&self.gas_price);
         match fee_rate{
             0 => new_gas_price = &self_gas * U256::from(10) / U256::from(10),

@@ -11,6 +11,6 @@ export class Wallet {
   broadcast(unsigned_tx: string, tx_signature: string): Promise<string>;
   address(): string;
   balance(): string;
-  estimate_fee(fee_rate: number): string;
+  estimate_fee(fee_rate: number, gas_limit: number): string;
   nonce(): bigint;
 }
