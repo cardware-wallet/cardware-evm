@@ -112,14 +112,14 @@ The output is a string.
 
 ## Send
 
-This function creates an unsigned transaction. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
+This function creates an unsigned transaction and a transaction signature. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
 
 ### Parameters
 
 | Parameter | Type | Description | Example |
 |---|---|---|---|
-| to | string | The address to send to. | ```"0x02A8665a18BBa2D1B4766e2D71977A781b97592e"``` |
-| value | string | The send amount with the correct decimals (example uses 18 decimals). | ```200000000000000``` |
+| to | string | The address to send to. | ```"0x37c639c70dbcacd9fbeb18053a4b284cbfca7214"``` |
+| value | string | The send amount with the correct decimals (example uses 18 decimals). | ```100000000000000``` |
 | fee_rate | int32 | The rate which decides the tx fee. 0 is slow, 1 is medium and 2 is fast. | ```2``` |
 
 ### Code
@@ -134,22 +134,22 @@ The output is a string.
 
 | Result | Description | Output |
 |---|---|---|
-| success | The unsigned transaction and the signature seperated by a **:**. | ```""``` |
+| success | The unsigned transaction and the transaction signature seperated by a **:**. | ```"e9088456ff9d048252089437c639c70dbcacd9fbeb18053a4b284cbfca721486b5e620f4800080018080:&OhFNL/DPyiV/bQFnzNyvcQM+FrdBKq0dvM2dzgCdnWcAAAAA"``` |
 | error | The is an issue with the derivation path. | ```"Error: Derivation path error."``` |
 
 ---
 
 ## Send (ERC20)
 
-This function creates an unsigned transaction. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
+This function creates an unsigned transaction and a transaction signature. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
 
 ### Parameters
 
 | Parameter | Type | Description | Example |
 |---|---|---|---|
 | contract_address | string | The contract of the ERC20 you wish to send. | ```"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"``` |
-| recipient | string | The address to send to. | ```"0x02A8665a18BBa2D1B4766e2D71977A781b97592e"``` |
-| value | string | The send amount with the correct decimals (example uses 6 decimals). | ```2000000``` |
+| recipient | string | The address to send to. | ```"0x37c639c70DbcacD9FBeb18053a4b284CBfcA7214"``` |
+| value | string | The send amount with the correct decimals (example uses 6 decimals). | ```1000000``` |
 | fee_rate | int32 | The rate which decides the tx fee. 0 is slow, 1 is medium and 2 is fast. | ```2``` |
 
 ### Code
@@ -164,7 +164,7 @@ The output is a string.
 
 | Result | Description | Output |
 |---|---|---|
-| success | The unsigned transaction and the transaction signature seperated by a **:**. | ```""``` |
+| success | The unsigned transaction and the transaction signature seperated by a **:**. | ```"f86909844ec2c75a8302710094a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4880b844a9059cbb00000000000000000000000037c639c70dbcacd9fbeb18053a4b284cbfca721400000000000000000000000000000000000000000000000000000000000f4240018080:&I0yEfDC9g6yH+6o63rVsWq7MQPqPVPAYEYZZ/nCl8N4AAAAA"``` |
 | error | The is an issue with the derivation path. | ```"Error: Derivation path error."``` |
 
 ---
@@ -177,8 +177,8 @@ This function needs an unsigned transaction and a transaction signature. It gets
 
 | Parameter | Type | Description | Example |
 |---|---|---|---|
-| unsigned_tx | string | The unsigned transaction in base64 that needs to be broadcasted. | ```""``` |
-| tx_signature | string | The transaction signature in base64 that needs to be broadcasted. | ```""``` |
+| unsigned_tx | string | The unsigned transaction in base64 that needs to be broadcasted. | ```"0xe9088456ff9d048252089437c639c70dbcacd9fbeb18053a4b284cbfca721486b5e620f4800080018080"``` |
+| tx_signature | string | The transaction signature in base64 that needs to be broadcasted. | ```"laNUujpNpeEJaSKo+CKH1sCxwK6EXkh69O6SGqFBkDRjHYK+cfTJkqkMKEZBiyF3rSCitjkc4OOl5EAWVO6crxw="``` |
 
 ### Code
 
@@ -192,7 +192,7 @@ The output is a string.
 
 | Result | Description | Output |
 |---|---|---|
-| success | The transaction ID of the broadcasted transaction. | ```"0x4038c7f2a5b7ce726e67f64f0604cf147cf1fcc15fd29c77988e486e8eab0da9"``` |
+| success | The transaction ID of the broadcasted transaction. | ```"0x6172b61aba8b0c336d5184b6f84d645cf7e232ce164da0820358f211910668ed"``` |
 | error | There is an issue decoding the unsigned transaction. | ```"Error: Failed to decode the unsigned transaction."```
 | error | There is an issue decoding the transaction signature. | ```"Error: Failed to decode the transaction signature."```
 | error | There is an issue decoding the nonce. | ```"Error: Failed to decode the nonce."```
