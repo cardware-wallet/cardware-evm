@@ -85,18 +85,19 @@ The output is a string.
 
 ## Estimate Fees
 
-This function estimates fees for a send transaction which takes a variable called **number of blocks** where the lower the number of blocks, the higher the estimated fee and the faster the transaction will confirm. Users can batch send transactions by populating multiple addresses and multiple amounts however the user must make sure both arrays have the same length.
+This function estimates fees for a send transaction which takes a variable called **fee rate** where the higher the fee rate, the higher the estimated fee and the faster the transaction will confirm. Fee rate has 3 options, either 1, 2 or 3. The other variable is called **gas limit** and sets what the upper bound of the fee must be.
 
 ### Parameters
 
 | Parameter | Type | Description | Example |
 |---|---|---|---|
 | fee_rate | int32 | The rate which decides the tx fee. 0 is slow, 1 is medium and 2 is fast. | ```2``` |
+| gas_limit | int32 | The upper bound of the fee. | ```21000``` |
 
 ### Code
 
 ```javascript
-let result = wallet.estimate_fee(fee_rate);
+let result = wallet.estimate_fee(fee_rate, gas_limit);
 ```
 
 ### Output
@@ -111,7 +112,7 @@ The output is a string.
 
 ## Send
 
-This function creates an unsigned transaction which it converts into a base64 string which it then splits up into chunks to be put into multiple QR codes. At the beginning of each chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *part of the unsigned transaction as a base64 string*.
+This function creates an unsigned transaction. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
 
 ### Parameters
 
@@ -129,18 +130,48 @@ var qrcode_chunks = wallet.send(to, value, fee_rate);
 
 ### Output
 
-The output is an array of strings.
+The output is a string.
 
 | Result | Description | Output |
 |---|---|---|
-| success | The unsigned transaction as a hex string. | ```""``` |
+| success | The unsigned transaction and the signature seperated by a **:**. | ```""``` |
+| error | The is an issue with the derivation path. | ```"Error: Derivation path error."``` |
+
+---
+
+## Send (ERC20)
+
+This function creates an unsigned transaction. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
+
+### Parameters
+
+| Parameter | Type | Description | Example |
+|---|---|---|---|
+| contract_address | string | The contract of the ERC20 you wish to send. | ```"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"``` |
+| recipient | string | The address to send to. | ```"0x02A8665a18BBa2D1B4766e2D71977A781b97592e"``` |
+| value | string | The send amount with the correct decimals (example uses 6 decimals). | ```2000000``` |
+| fee_rate | int32 | The rate which decides the tx fee. 0 is slow, 1 is medium and 2 is fast. | ```2``` |
+
+### Code
+
+```javascript
+var qrcode_chunks = wallet.erc20_transfer(contract_address, recipient, value, fee_rate);
+```
+
+### Output
+
+The output is a string.
+
+| Result | Description | Output |
+|---|---|---|
+| success | The unsigned transaction and the transaction signature seperated by a **:**. | ```""``` |
 | error | The is an issue with the derivation path. | ```"Error: Derivation path error."``` |
 
 ---
 
 ## Broadcast
 
-This function needs a signed transaction as a base64 string. It gets this by scanning the QR codes on the Cardware device. When scanning the QR codes of the signed transaction from the Cardware device it follows the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *part of the signed transaction as a base64 string*.
+This function needs an unsigned transaction and a transaction signature. It gets this by scanning the QR codes on the Cardware device. When scanning the QR codes of the signed transaction from the Cardware device it follows the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction + the transaction signature*.
 
 ### Parameters
 
@@ -177,7 +208,7 @@ The output is a string.
 
 ## Address
 
-This function returns the address of your Cardware device.
+This function returns the address of your Cardware device at the given derivation path that the wallet was initialised with.
 
 ### Parameters
 
@@ -220,18 +251,18 @@ The output is a string.
 
 | Result | Description | Output |
 |---|---|---|
-| success | The confirmed balance of the native token for your wallet.| ```"0.003739700213554025"``` |
+| success | The confirmed balance of the native token for your wallet. | ```"0.003739700213554025"``` |
 ---
 
 ## Balance (ERC20)
 
-This function returns confirmed balance of an ERC20 token for your Cardware device.
+This function returns confirmed balance of a list of ERC20 tokens for your Cardware device.
 
 ### Parameters
 
 | Parameter | Type | Description | Example |
 |---|---|---|---|
-| contract_address | string | The contract address of the ERC20 token. | ```"0xdAC17F958D2ee523a2206206994597C13D831ec7"``` |
+| contract_address | array[string] | A list of contract addresses of the ERC20 token. | ```["0xdAC17F958D2ee523a2206206994597C13D831ec7"]``` |
 
 ### Code
 
@@ -246,4 +277,37 @@ The output is a string.
 | Result | Description | Output |
 |---|---|---|
 | success | The confirmed balance of a specific ERC20 token for your wallet.| ```"0.003739700213554025"``` |
+---
+
+## Validate Contract (ERC20)
+
+This function validates an ERC20 contract when given a contract address.
+
+### Parameters
+
+| Parameter | Type | Description | Example |
+|---|---|---|---|
+| contract_address | array[string] | The contract address of the ERC20 token. | ```"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"``` |
+
+### Code
+
+```javascript
+const result = wallet.validate_contract(contract_address);
+```
+
+### Output
+
+The output is a string.
+
+| Result | Description | Output |
+|---|---|---|
+| success | The confirmed balance of a specific ERC20 token for your wallet.| ```"{"address":"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48","decimals":6,"name":"USD Coin","symbol":"USDC"}"``` |
+| error | There is an isuue with the esplora. | ```"Error: Infura error during batch request."``` |
+| error | There is an issue with parsing the JSON. | ```"Error: JSON parse error during batch request."``` |
+| error | There is an issue with the JSON format. | ```"Error: Unexpected JSON format in batch response."``` |
+| error | The decimals value is out of range. | ```"Error: Decimals value out of range."``` |
+| error | There is an issue decoding the decimals. | ```"Error: Failed to decode decimals."``` |
+| error | There is an issue decoding the symbol. | ```"Error: Failed to decode symbol."``` |
+| error | There is an issue decoding the name. | ```"Error: Failed to decode name."``` |
+
 ---
