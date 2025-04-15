@@ -340,55 +340,79 @@ impl Wallet {
         let final_str = unsigned_tx + ":&" + &base64::encode(&total_bytes);
         return final_str;
     }
-    pub async fn erc20_balance(&self, contract_address: String) -> String {
+    //This function now always accepts and returns a list of balances for a list of contracts
+    pub async fn erc20_balance(&self, contract_addresses: Vec<String>) -> Vec<String> {
+        // Clean and pad the wallet address
         let wallet_addr_clean = self.address.trim_start_matches("0x");
         let padded_wallet_addr = format!("{:0>64}", wallet_addr_clean);
 
+        // Build the call data using the ERC20 balanceOf selector (0x70a08231)
         let call_data = format!("0x70a08231{}", padded_wallet_addr);
-        let req_body = json!({
-            "jsonrpc": "2.0",
-            "method": "eth_call",
-            "params": [
-                {
-                    "to": contract_address,
-                    "data": call_data
-                },
-                "latest"
-            ],
-            "id": 1
-        });
-        let client = Client::new();
+
+        // Build batched JSON-RPC requests, one per contract address
+        let mut batch_requests = Vec::new();
+        for (i, contract_address) in contract_addresses.iter().enumerate() {
+            let req = json!({
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [
+                    {
+                        "to": contract_address,
+                        "data": call_data
+                    },
+                    "latest"
+                ],
+                "id": i + 1  // Assign a unique id for each request
+            });
+            batch_requests.push(req);
+        }
+
+        // Send the batched request to Infura
+        let client = reqwest::Client::new();
         let response = match client
             .post(&self.infura_url)
-            .header(CONTENT_TYPE, "application/json")
-            .json(&req_body)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .json(&batch_requests)
             .send()
             .await
         {
             Ok(resp) => resp,
-            Err(_) => return "Error: Infura error.".to_string(),
+            Err(_) => return vec!["Error: Infura error.".to_string()],
         };
 
         if response.status().is_success() {
-            let body = response.text().await.unwrap();
-            let parsed: Value = match serde_json::from_str(&body) {
+            let body = match response.text().await {
+                Ok(text) => text,
+                Err(_) => return vec!["Error: Infura error.".to_string()],
+            };
+
+            // Parse the response as an array of JSON objects
+            let parsed: Vec<serde_json::Value> = match serde_json::from_str(&body) {
                 Ok(val) => val,
-                Err(_) => return "Error: JSON parse error.".to_string(),
+                Err(_) => return vec!["Error: JSON parse error.".to_string()],
             };
 
-            let result_str = match parsed.get("result").and_then(|r| r.as_str()) {
-                Some(r) => r,
-                None => return "Error: Unexpected JSON format.".to_string(),
-            };
+            let mut balances = Vec::new();
+            // Process each response object in the batch
+            for resp_item in parsed {
+                let result_str = match resp_item.get("result").and_then(|r| r.as_str()) {
+                    Some(r) => r,
+                    None => return vec!["Error: Unexpected JSON format.".to_string()],
+                };
 
-            let balance_u256 = match U256::from_str_radix(result_str.trim_start_matches("0x"), 16) {
-                Ok(val) => val,
-                Err(_) => return "Error: Balance parse error.".to_string(),
-            };
+                let balance_u256 = match U256::from_str_radix(result_str.trim_start_matches("0x"), 16) {
+                    Ok(val) => val,
+                    Err(_) => return vec!["Error: Balance parse error.".to_string()],
+                };
 
-            return balance_u256.to_string();
+                balances.push(balance_u256.to_string());
+            }
+            // Prepend "Success" as the first element
+            let mut result_vec = vec!["Success".to_string()];
+            result_vec.extend(balances);
+            result_vec
         } else {
-            return "Error: Infura error.".to_string();
+            vec!["Error: Infura error.".to_string()]
         }
     }
     pub async fn broadcast(&mut self, unsigned_tx: String, tx_signature : String) -> String {

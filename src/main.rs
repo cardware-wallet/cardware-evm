@@ -21,7 +21,8 @@ async fn main() {
 
 
     //Erc20 Balance
-    let erc_bal = wal.erc20_balance("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()).await;
+    let erc_bal = wal.erc20_balance(["0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+                                      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()].to_vec()).await;
     println!("erc20 bal: {:?}",erc_bal);
 
     //Broadcast example

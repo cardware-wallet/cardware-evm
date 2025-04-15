@@ -205,11 +205,21 @@ function debugString(val) {
     // TODO we could test for more things here, like `Set`s and `Map`s.
     return className;
 }
-function __wbg_adapter_26(arg0, arg1, arg2) {
+
+function passArrayJsValueToWasm0(array, malloc) {
+    const ptr = malloc(array.length * 4, 4) >>> 0;
+    for (let i = 0; i < array.length; i++) {
+        const add = addToExternrefTable0(array[i]);
+        getDataViewMemory0().setUint32(ptr + 4 * i, add, true);
+    }
+    WASM_VECTOR_LEN = array.length;
+    return ptr;
+}
+function __wbg_adapter_30(arg0, arg1, arg2) {
     wasm.closure156_externref_shim(arg0, arg1, arg2);
 }
 
-function __wbg_adapter_100(arg0, arg1, arg2, arg3) {
+function __wbg_adapter_104(arg0, arg1, arg2, arg3) {
     wasm.closure207_externref_shim(arg0, arg1, arg2, arg3);
 }
 
@@ -317,11 +327,11 @@ export class Wallet {
         }
     }
     /**
-     * @param {string} contract_address
-     * @returns {Promise<string>}
+     * @param {string[]} contract_addresses
+     * @returns {Promise<string[]>}
      */
-    erc20_balance(contract_address) {
-        const ptr0 = passStringToWasm0(contract_address, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    erc20_balance(contract_addresses) {
+        const ptr0 = passArrayJsValueToWasm0(contract_addresses, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.wallet_erc20_balance(this.__wbg_ptr, ptr0, len0);
         return ret;
@@ -486,7 +496,7 @@ export function __wbg_new_23a2665fac83c611(arg0, arg1) {
             const a = state0.a;
             state0.a = 0;
             try {
-                return __wbg_adapter_100(a, state0.b, arg0, arg1);
+                return __wbg_adapter_104(a, state0.b, arg0, arg1);
             } finally {
                 state0.a = a;
             }
@@ -643,6 +653,15 @@ export function __wbg_value_cd1ffa7b1ab794f1(arg0) {
     return ret;
 };
 
+export function __wbindgen_array_new() {
+    const ret = [];
+    return ret;
+};
+
+export function __wbindgen_array_push(arg0, arg1) {
+    arg0.push(arg1);
+};
+
 export function __wbindgen_cb_drop(arg0) {
     const obj = arg0.original;
     if (obj.cnt-- == 1) {
@@ -653,8 +672,8 @@ export function __wbindgen_cb_drop(arg0) {
     return ret;
 };
 
-export function __wbindgen_closure_wrapper495(arg0, arg1, arg2) {
-    const ret = makeMutClosure(arg0, arg1, 157, __wbg_adapter_26);
+export function __wbindgen_closure_wrapper503(arg0, arg1, arg2) {
+    const ret = makeMutClosure(arg0, arg1, 157, __wbg_adapter_30);
     return ret;
 };
 
