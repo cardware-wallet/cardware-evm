@@ -13,6 +13,7 @@ use tiny_keccak::Keccak;
 use tiny_keccak::Hasher;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 #[wasm_bindgen]
 pub struct Wallet{
@@ -47,85 +48,174 @@ impl Wallet {
         let url = self.infura_url.clone();
         let client = reqwest::Client::new();
         let addr = self.address(); 
-
-        // Batch JSON-RPC request
-        let request_body = json!([
-            {
-                "jsonrpc": "2.0",
-                "method": "eth_getBalance",
-                "params": [addr.clone(), "latest"],
-                "id": 1,
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "eth_getTransactionCount",
-                "params": [addr.clone(), "latest"],
-                "id": 2,
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "eth_gasPrice",
-                "params": [],
-                "id": 3,
+        if self.chain_id == 728126428 {
+            let tron_addr = tron_address_to_hex(&addr);
+            if tron_addr.starts_with("Error:") {
+                return tron_addr;
             }
-        ]);
 
-        let response = match client.post(&url)
-            .header(CONTENT_TYPE, "application/json")
-            .json(&request_body)
-            .send()
-            .await {
-                Ok(resp) => resp,
-                Err(_) => return "Error: Infura error.".to_string(),
-            };
-
-        if response.status().is_success() {
-            let body = response.text().await.unwrap();
-            let parsed: Value = match serde_json::from_str(&body) {
-                Ok(val) => val,
-                Err(_) => return "Error: JSON parse error.".to_string(),
-            };
-
-            let responses = match parsed.as_array() {
-                Some(arr) => arr,
-                None => return "Error: Unexpected JSON format.".to_string(),
-            };
-
-            for resp in responses {
-                let id = resp["id"].as_i64().unwrap_or_default();
-                let result = match resp["result"].as_str() {
-                    Some(r) => r,
-                    None => continue,
-                };
-                match id {
-                    1 => { // eth_getBalance
-                        let balance = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
-                            Ok(val) => val,
-                            Err(_) => return "Error: Balance parse error.".to_string(),
-                        };
-                        self.balance = gas_price_to_string(balance);
-                        self.eth_balance = wei_to_eth(balance);
-                    },
-                    2 => { // eth_getTransactionCount (nonce)
-                        let nonce = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
-                            Ok(val) => val,
-                            Err(_) => return "Error: Nonce parse error.".to_string(),
-                        };
-                        self.nonce = nonce.low_u64();
-                    },
-                    3 => { // eth_gasPrice
-                        let gas_price = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
-                            Ok(val) => val,
-                            Err(_) => return "Error: Gas price parse error.".to_string(),
-                        };
-                        self.gas_price = gas_price_to_string(gas_price);
-                    },
-                    _ => {}
+            let request_body = serde_json::json!([
+                {
+                    "jsonrpc": "2.0",
+                    "method": "eth_getBalance",
+                    "params": [tron_addr.clone(), "latest"],
+                    "id": 1,
+                },
+                {
+                    "jsonrpc": "2.0",
+                    "method": "eth_getTransactionCount",
+                    "params": [tron_addr.clone(), "latest"],
+                    "id": 2,
+                },
+                {
+                    "jsonrpc": "2.0",
+                    "method": "eth_gasPrice",
+                    "params": [],
+                    "id": 3,
                 }
+            ]);
+
+            let response = match client.post(&url)
+                .header("Content-Type", "application/json")
+                .json(&request_body)
+                .send()
+                .await {
+                    Ok(resp) => resp,
+                    Err(_) => return "Error: QuickNode Tron error.".to_string(),
+                };
+
+            if response.status().is_success() {
+                let body = response.text().await.unwrap();
+                let parsed: serde_json::Value = match serde_json::from_str(&body) {
+                    Ok(val) => val,
+                    Err(_) => return "Error: JSON parse error.".to_string(),
+                };
+
+                let responses = match parsed.as_array() {
+                    Some(arr) => arr,
+                    None => return "Error: Unexpected JSON format.".to_string(),
+                };
+
+                for resp in responses {
+                    let id = resp["id"].as_i64().unwrap_or_default();
+                    let result = match resp["result"].as_str() {
+                        Some(r) => r,
+                        None => continue,
+                    };
+                    match id {
+                        1 => { // Fetch balance (in sun)
+                            let balance = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                                Ok(val) => val,
+                                Err(_) => return "Error: Balance parse error.".to_string(),
+                            };
+                            // Convert the raw balance.
+                            self.balance = gas_price_to_string(balance);
+                            self.eth_balance = wei_to_trx(balance);
+                        },
+                        2 => { // Fetch nonce (transaction count)
+                            let nonce = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                                Ok(val) => val,
+                                Err(_) => return "Error: Nonce parse error.".to_string(),
+                            };
+                            self.nonce = nonce.low_u64();
+                            println!("nonce {:?}",nonce.low_u64());
+                        },
+                        3 => { // Fetch gas price for fee estimation
+                            let gas_price = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                                Ok(val) => val,
+                                Err(_) => return "Error: Gas price parse error.".to_string(),
+                            };
+                            self.gas_price = gas_price_to_string(gas_price);
+                            println!("nonce {:?}",gas_price);
+                        },
+                        _ => {}
+                    }
+                }
+                return "Sync successful.".to_string();
+            } else {
+                return "Error: QuickNode Tron error.".to_string();
             }
-            return "Sync successful.".to_string();
-        } else {
-            return "Error: Infura error.".to_string();
+        }else{ // Ethereum (or standard EVM) branch
+
+            // Batch JSON-RPC request
+            let request_body = json!([
+                {
+                    "jsonrpc": "2.0",
+                    "method": "eth_getBalance",
+                    "params": [addr.clone(), "latest"],
+                    "id": 1,
+                },
+                {
+                    "jsonrpc": "2.0",
+                    "method": "eth_getTransactionCount",
+                    "params": [addr.clone(), "latest"],
+                    "id": 2,
+                },
+                {
+                    "jsonrpc": "2.0",
+                    "method": "eth_gasPrice",
+                    "params": [],
+                    "id": 3,
+                }
+            ]);
+
+            let response = match client.post(&url)
+                .header(CONTENT_TYPE, "application/json")
+                .json(&request_body)
+                .send()
+                .await {
+                    Ok(resp) => resp,
+                    Err(_) => return "Error: Infura error.".to_string(),
+                };
+
+            if response.status().is_success() {
+                let body = response.text().await.unwrap();
+                let parsed: Value = match serde_json::from_str(&body) {
+                    Ok(val) => val,
+                    Err(_) => return "Error: JSON parse error.".to_string(),
+                };
+
+                let responses = match parsed.as_array() {
+                    Some(arr) => arr,
+                    None => return "Error: Unexpected JSON format.".to_string(),
+                };
+
+                for resp in responses {
+                    let id = resp["id"].as_i64().unwrap_or_default();
+                    let result = match resp["result"].as_str() {
+                        Some(r) => r,
+                        None => continue,
+                    };
+                    match id {
+                        1 => { // eth_getBalance
+                            let balance = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                                Ok(val) => val,
+                                Err(_) => return "Error: Balance parse error.".to_string(),
+                            };
+                            self.balance = gas_price_to_string(balance);
+                            self.eth_balance = wei_to_eth(balance);
+                        },
+                        2 => { // eth_getTransactionCount (nonce)
+                            let nonce = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                                Ok(val) => val,
+                                Err(_) => return "Error: Nonce parse error.".to_string(),
+                            };
+                            self.nonce = nonce.low_u64();
+                        },
+                        3 => { // eth_gasPrice
+                            let gas_price = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                                Ok(val) => val,
+                                Err(_) => return "Error: Gas price parse error.".to_string(),
+                            };
+                            self.gas_price = gas_price_to_string(gas_price);
+                        },
+                        _ => {}
+                    }
+                }
+                return "Sync successful.".to_string();
+            } else {
+                return "Error: Infura error.".to_string();
+            }
         }
     }
     //fee rate determines tx fee, 0 = slow, 1 = medium, 2 = fast
@@ -528,7 +618,37 @@ impl Wallet {
         return "Error: Failed to broadcast transaction.".to_string();
     }
     pub fn address(&mut self) -> String{
-    	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1
+        if self.chain_id == 728126428 { //Tron CHAIN ID
+            return self.tron_address();
+        }else{ //Standard EVM
+        	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1
+            let xpub = match Xpub::from_str(&xpub_tmp_str){
+                Ok(xpub) => xpub,
+                Err(_) => return "Error: zPub derivation error.".to_string(),
+            };
+            let derivation_path = DerivationPath::from_str(&self.account_derivation_path).unwrap();
+            let derived_xpub = match xpub.derive_pub(&bitcoin::secp256k1::Secp256k1::new(), &derivation_path){
+                Ok(derived_xpub) => derived_xpub,
+                Err(_) => return "Error: zPub derivation error.".to_string(),
+            };
+            let public_key = PublicKey::new_uncompressed(
+                derived_xpub.public_key
+            );
+            let uncompressed = public_key.to_bytes();
+    	    let public_bytes = &uncompressed[1..];
+    	    // Hash with Keccak-256
+    	    let mut hasher = Keccak::v256();
+    	    let mut output = [0u8; 32];
+    	    hasher.update(public_bytes);
+    	    hasher.finalize(&mut output);
+    	    let address = &output[12..];
+    	    self.address = format!("0x{}", hex::encode(address));
+        	return format!("0x{}", hex::encode(address));
+        }
+    }
+    pub fn tron_address(&mut self) -> String {
+        // Step 1: Derive your public key as before.
+        let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1
         let xpub = match Xpub::from_str(&xpub_tmp_str){
             Ok(xpub) => xpub,
             Err(_) => return "Error: zPub derivation error.".to_string(),
@@ -542,15 +662,37 @@ impl Wallet {
             derived_xpub.public_key
         );
         let uncompressed = public_key.to_bytes();
-	    let public_bytes = &uncompressed[1..];
-	    // Hash with Keccak-256
-	    let mut hasher = Keccak::v256();
-	    let mut output = [0u8; 32];
-	    hasher.update(public_bytes);
-	    hasher.finalize(&mut output);
-	    let address = &output[12..];
-	    self.address = format!("0x{}", hex::encode(address));
-    	return format!("0x{}", hex::encode(address));
+        let public_bytes = &uncompressed[1..];
+
+        // Step 3: Hash the public key using Keccak-256 (same as ETH)
+        let mut keccak_hasher = Keccak::v256();
+        let mut keccak_output = [0u8; 32];
+        keccak_hasher.update(public_bytes);
+        keccak_hasher.finalize(&mut keccak_output);
+        let eth_hash = &keccak_output[12..]; // last 20 bytes
+
+        // Step 4: Prepend the TRON network prefix (0x41)
+        let mut tron_bytes = Vec::with_capacity(21);
+        tron_bytes.push(0x41);  
+        tron_bytes.extend_from_slice(eth_hash);
+
+        // Step 5: Calculate the checksum (double SHA-256)
+        let checksum = {
+            let first_hash = Sha256::digest(&tron_bytes);
+            let second_hash = Sha256::digest(&first_hash);
+            // Use the first 4 bytes as checksum
+            second_hash[0..4].to_vec()
+        };
+
+        // Step 6: Append the checksum to the data
+        tron_bytes.extend_from_slice(&checksum); // now tron_bytes is 25 bytes
+
+        // Step 7: Base58 encode the result using the bs58 crate
+        let tron_address = bs58::encode(tron_bytes).into_string();
+
+        // Optionally, store the result in your struct if needed:
+        self.address = tron_address.clone();
+        return tron_address;
     }
     pub fn balance(&self) -> String {
         self.eth_balance.to_string()
@@ -640,6 +782,39 @@ pub fn wei_to_eth(wei: U256) -> f64 {
     };
     // Divide by 10^18 to get Ether
     return wei_f64 / 1e18;
+}
+
+pub fn wei_to_trx(wei: U256) -> f64 {
+    // Convert U256 to a string, then parse as f64.
+    // Note: This approach works well for typical balances,
+    // but may lose precision for extremely large values.
+    let wei_str = wei.to_string();
+    let wei_f64: f64 = match wei_str.parse(){
+        Ok(f6) => f6,
+        Err(_) => return 0.0,
+    };
+    // Divide by 10^18 to get Ether
+    return wei_f64 / 1e6;
+}
+fn tron_address_to_hex(address: &str) -> String {
+    // Attempt to decode the Base58 encoded Tron address.
+    let decoded = match bs58::decode(address).into_vec() {
+        Ok(vec) => vec,
+        Err(e) => return format!("Error: Failed to decode Base58 - {}", e),
+    };
+
+    // If the decoded data is 25 bytes, it's a Base58Check encoding with a 4-byte checksum.
+    // For Tron, the first 21 bytes represent the actual address.
+    let raw_address = if decoded.len() == 21 {
+        &decoded[..]
+    } else if decoded.len() == 25 {
+        &decoded[..21]
+    } else {
+        return format!("Error: Invalid Tron address length: expected 21 or 25 bytes, got {}", decoded.len());
+    };
+
+    // Convert the raw address to a hexadecimal string with a "0x" prefix.
+    format!("0x{}", hex::encode(raw_address))
 }
 pub fn chunk_and_label(final_str: &str, chunk_size: usize) -> Vec<String> {
     let total_chunks = (final_str.len() + chunk_size - 1) / chunk_size; // Calculate the number of chunks
