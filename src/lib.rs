@@ -220,6 +220,61 @@ impl Wallet {
     }
     //fee rate determines tx fee, 0 = slow, 1 = medium, 2 = fast
     pub fn send(&self, to: String, value: &str, fee_rate : i32) -> String {
+
+        //TRON
+        if self.chain_id == 728126428 {
+            // 1) Convert the value to U256
+            let gas_limit: u64 = 21000;
+            let value_u256 = U256::from_dec_str(value).unwrap_or(U256::zero());
+
+            // 2) Compute a new gas_price based on fee_rate
+            let self_gas = gas_price_from_string(&self.gas_price);
+            let new_gas_price = match fee_rate {
+                0 => &self_gas * U256::from(10) / U256::from(10),
+                1 => self_gas * U256::from(15) / U256::from(10),
+                2 => &self_gas * U256::from(20) / U256::from(10),
+                _ => self_gas,
+            };
+
+            // 3) RLP‑encode per EIP‑155, but with chain_id = 728126428
+            let mut stream = RlpStream::new_list(9);
+            stream.append(&U256::from(self.nonce));
+            stream.append(&new_gas_price);
+            stream.append(&U256::from(gas_limit));
+            //let to_address = Address::from_str(&to).unwrap_or(Address::zero());
+            let to_hex = tron_address_to_hex(&to);
+            if to_hex.starts_with("Error:") {
+                return to_hex;
+            }
+            let to_address = Address::from_str(&to_hex)
+                .unwrap_or_else(|_| Address::zero());
+            println!("to addr: {:?}",to_address);
+            stream.append(&to_address);
+            stream.append(&value_u256);
+            stream.append(&Vec::new());           // data
+            stream.append(&self.chain_id);       // <-- Tron EVM chain ID
+            stream.append(&0u8);                 // v placeholder
+            stream.append(&0u8);                 // r placeholder
+            let rlp_encoded = stream.out();
+
+            // 4) Hash the RLP with Keccak256
+            let mut hasher = Keccak::v256();
+            let mut tx_hash = [0u8; 32];
+            hasher.update(&rlp_encoded);
+            hasher.finalize(&mut tx_hash);
+
+            // 5) Append your derivation‑path bytes for external signing
+            let mut total_bytes: Vec<u8> = Vec::new();
+            total_bytes.extend_from_slice(&tx_hash);
+            match extract_u16s(&self.account_derivation_path) {
+                Ok((first, second)) => append_integers_as_bytes(&mut total_bytes, first, second),
+                Err(_) => return "Error: Derivation path error.".to_string(),
+            }
+
+            // 6) Return in `"unsigned_hex:&base64(hash+derivation)"` format
+            let unsigned_tx = hex::encode(rlp_encoded);
+            return format!("{}:&{}", unsigned_tx, base64::encode(&total_bytes));
+        }
         // Convert the value from a decimal string to U256
         let gas_limit : u64 = 21000;
         let value_u256 = U256::from_dec_str(value).unwrap_or(U256::zero());
@@ -263,6 +318,89 @@ impl Wallet {
         // Return the unsigned transaction as a hex string.
         let final_str = unsigned_tx + ":&" + &base64::encode(&total_bytes);
         return final_str;
+    }
+    pub async fn tron_send(&mut self, to: String, value: &str, fee_rate : i32) -> String{
+        let client = Client::new();
+
+        // 1) Convert addresses to hex (no “0x” prefix) for Tron API:
+        let from_hex = tron_address_to_hex(&self.address());
+        if from_hex.starts_with("Error:") {
+            return from_hex;
+        }
+        let owner = from_hex.trim_start_matches("0x");
+
+        let to_hex = tron_address_to_hex(&to);
+        if to_hex.starts_with("Error:") {
+            return to_hex;
+        }
+        let recipient = to_hex.trim_start_matches("0x");
+
+        // 2) Parse the amount into “sun” (1 TRX = 1e6 sun)
+        let amount_sun: u64 = match value.parse() {
+            Ok(v) => v,
+            Err(_) => return "Error: Invalid TRX amount".to_string(),
+        };
+
+        // 3) Call Tron’s createTransaction endpoint
+        let body = json!({
+            "owner_address": owner,
+            "to_address":   recipient,
+            "amount":       amount_sun,
+        });
+
+        let url = format!("{}/wallet/createTransaction", self.infura_url);
+        let resp = match client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await {
+                Ok(r) => r,
+                Err(_) => return "Error: Tron RPC request failed".to_string(),
+            };
+        if !resp.status().is_success() {
+            return format!("Error: Tron node returned {}", resp.status());
+        }
+
+        let tx_json: Value = match resp.json().await {
+            Ok(v) => v,
+            Err(_) => return "Error: Invalid JSON from Tron node".to_string(),
+        };
+        println!("tx json: {:?}",tx_json);
+        if let Some(err) = tx_json.get("Error") {
+            return format!("Error: Tron RPC error: {:?}", err);
+        }
+
+        // 4) Extract raw_data_hex and txID
+        let raw_hex = tx_json["raw_data_hex"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        if raw_hex.is_empty() {
+            return "Error: raw_data_hex missing".to_string();
+        }
+        let tx_id = tx_json["txID"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        if tx_id.is_empty() {
+            return "Error: txID missing".to_string();
+        }
+
+        // 5) Build the “hash+derivation” blob
+        let tx_hash = match hex::decode(&tx_id) {
+            Ok(b) => b,
+            Err(_) => return "Error: Failed to decode txID".to_string(),
+        };
+        let mut total = Vec::new();
+        total.extend_from_slice(&tx_hash);
+        match extract_u16s(&self.account_derivation_path) {
+            Ok((a, b)) => append_integers_as_bytes(&mut total, a, b),
+            Err(_) => return "Error: Derivation path error".to_string(),
+        }
+
+        // 6) Return exactly in your “unsigned_hex:&base64(...)” format
+        return format!("{}:&{}", raw_hex, base64::encode(&total));
     }
     pub async fn validate_contract(&mut self, contract_address: String) -> String {
         let url = self.infura_url.clone();
@@ -597,25 +735,147 @@ impl Wallet {
 
         let signed_tx_bytes = stream.out().to_vec();
         let signed_tx_hex = format!("0x{}", hex::encode(&signed_tx_bytes));
-        
+        println!("singed tx hex: {:?}",signed_tx_hex);
+        let send_url = if self.chain_id == 728126428 {
+            // Tron EVM write calls live here:
+            //"https://02-losangeles-030-01.rpc.tatum.io/jsonrpc".to_string()
+            self.infura_url.clone()
+        } else {
+            // Ethereum uses the Infura URL as‑is
+            self.infura_url.clone()
+        };
+
         let client = Client::new();
         let req_body = json!({
             "jsonrpc": "2.0",
-            "method": "eth_sendRawTransaction",
-            "params": [signed_tx_hex],
-            "id": 1
+            "method":  "eth_sendRawTransaction",
+            "params":  [ signed_tx_hex ],
+            "id":      1
         });
-        let resp = client.post(&self.infura_url).json(&req_body).send().await;
-        if let Ok(response) = resp {
-            if let Ok(resp_json) = response.json::<serde_json::Value>().await {
-                if let Some(result) = resp_json.get("result").and_then(|r| r.as_str()) {
-                    return result.to_string();
-                } else if let Some(error) = resp_json.get("error") {
-                    return format!("Error: {:?}", error);
-                }
+
+        // 1) Send the request
+        let response = match client
+            .post(&send_url)
+            .header("Content-Type", "application/json")
+            .json(&req_body)
+            .send()
+            .await
+        {
+            Ok(res) => res,
+            Err(e) => {
+                return format!("Error: HTTP request failed: {}", e);
             }
+        };
+
+        // 2) Check HTTP status
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = match response.text().await {
+                Ok(t) => t,
+                Err(e) => format!("<failed to read body: {}>", e),
+            };
+            return format!("Error: HTTP {}: {}", status, text);
         }
-        return "Error: Failed to broadcast transaction.".to_string();
+
+        // 3) Read response body
+        let body = match response.text().await {
+            Ok(t) => t,
+            Err(e) => {
+                return format!("Error: Failed to read response body: {}", e);
+            }
+        };
+
+        // 4) Parse JSON
+        let json: serde_json::Value = match serde_json::from_str(&body) {
+            Ok(v) => v,
+            Err(e) => {
+                return format!("Error: Invalid JSON: {}\n{}", e, body);
+            }
+        };
+
+        // 5) Inspect RPC result or error
+        if let Some(result) = json.get("result").and_then(|r| r.as_str()) {
+            return result.to_string();
+        }
+        if let Some(err) = json.get("error") {
+            return format!("Error: RPC error: {:?}", err);
+        }
+
+        // 6) Fallback
+        format!("Error: Unexpected response: {}", body)
+    }
+    pub async fn tron_broadcast(
+    &mut self,
+    tx_json_str: String,   // The full JSON string you got from createTransaction
+    tx_signature: String,  // Your Base64 signature
+    ) -> String {
+        // 1) Parse the createTransaction JSON
+        let mut wrapper: serde_json::Value = match serde_json::from_str(&tx_json_str) {
+            Ok(v) => v,
+            Err(e) => return format!("Error: Invalid transaction JSON: {}", e),
+        };
+
+        // The createTransaction response is under "transaction"
+        let mut tx_obj = match wrapper.get_mut("transaction") {
+            Some(t) => t.take(),
+            None => return "Error: `transaction` field missing".to_string(),
+        };
+
+        // 2) Decode your Base64 signature → bytes → hex
+        let sig_bytes = match base64::decode(&tx_signature) {
+            Ok(b) => b,
+            Err(e) => return format!("Error: Invalid Base64 signature: {}", e),
+        };
+        let sig_hex = hex::encode(sig_bytes);
+
+        // 3) Inject the signature array into the transaction object
+        tx_obj["signature"] = serde_json::json!([ sig_hex ]);
+
+        // 4) POST the full transaction object
+        let url = format!(
+            "{}/wallet/broadcasttransaction",
+            self.infura_url.trim_end_matches("/jsonrpc")
+        );
+        let client = reqwest::Client::new();
+        let resp = match client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&tx_obj)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return format!("Error: HTTP request failed: {}", e),
+        };
+
+        // 5) Check status
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text   = resp.text().await.unwrap_or_default();
+            return format!("Error: HTTP {}: {}", status, text);
+        }
+
+        // 6) Parse response JSON
+        let v: serde_json::Value = match resp.json().await {
+            Ok(j) => j,
+            Err(e) => return format!("Error: Invalid JSON response: {}", e),
+        };
+
+        // Tron returns { "result": true, "txid": "<id>" }
+        if v.get("result") == Some(&serde_json::json!(true)) {
+            if let Some(txid) = v.get("txid").and_then(|t| t.as_str()) {
+                return txid.to_string();
+            }
+            return "Broadcast successful".into();
+        }
+
+        // 7) Surface any error field
+        if let Some(err) = v.get("error").or_else(|| v.get("Error")) {
+            return format!("Error: {:?}", err);
+        }
+
+        // 8) Fallback
+        format!("Error: Unexpected response: {}", v)
     }
     pub fn address(&mut self) -> String{
         if self.chain_id == 728126428 { //Tron CHAIN ID
@@ -783,7 +1043,6 @@ pub fn wei_to_eth(wei: U256) -> f64 {
     // Divide by 10^18 to get Ether
     return wei_f64 / 1e18;
 }
-
 pub fn wei_to_trx(wei: U256) -> f64 {
     // Convert U256 to a string, then parse as f64.
     // Note: This approach works well for typical balances,
@@ -797,24 +1056,29 @@ pub fn wei_to_trx(wei: U256) -> f64 {
     return wei_f64 / 1e6;
 }
 fn tron_address_to_hex(address: &str) -> String {
-    // Attempt to decode the Base58 encoded Tron address.
+    // 1) Decode Base58Check into bytes
     let decoded = match bs58::decode(address).into_vec() {
         Ok(vec) => vec,
         Err(e) => return format!("Error: Failed to decode Base58 - {}", e),
     };
 
-    // If the decoded data is 25 bytes, it's a Base58Check encoding with a 4-byte checksum.
-    // For Tron, the first 21 bytes represent the actual address.
-    let raw_address = if decoded.len() == 21 {
-        &decoded[..]
-    } else if decoded.len() == 25 {
+    // 2) Handle either raw 21‑byte or 25‑byte (with 4‑byte checksum) payload
+    let payload = if decoded.len() == 21 {
         &decoded[..21]
+    } else if decoded.len() == 25 {
+        &decoded[..21]  // drop 4‑byte checksum
     } else {
-        return format!("Error: Invalid Tron address length: expected 21 or 25 bytes, got {}", decoded.len());
+        return format!(
+            "Error: Invalid Tron address length: expected 21 or 25 bytes, got {}",
+            decoded.len()
+        );
     };
 
-    // Convert the raw address to a hexadecimal string with a "0x" prefix.
-    format!("0x{}", hex::encode(raw_address))
+    // 3) Drop the first byte (network prefix 0x41) and keep 20‑byte address
+    let addr20 = &payload[1..21];
+
+    // 4) Hex‑encode those 20 bytes, prefix with "0x"
+    format!("0x{}", hex::encode(addr20))
 }
 pub fn chunk_and_label(final_str: &str, chunk_size: usize) -> Vec<String> {
     let total_chunks = (final_str.len() + chunk_size - 1) / chunk_size; // Calculate the number of chunks
@@ -865,4 +1129,3 @@ pub fn append_integers_as_bytes(vec: &mut Vec<u8>, addressdepth: u16, changedept
     vec.extend_from_slice(&addressdepth_bytes);
     vec.extend_from_slice(&changedepth_bytes);
 }
-
