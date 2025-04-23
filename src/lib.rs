@@ -527,6 +527,106 @@ impl Wallet {
         }
         return "Error: Failed to broadcast transaction.".to_string();
     }
+    pub fn construct_signed_tx(&self, unsigned_tx : String, tx_signature : String) -> String{
+        let unsigned_tx_hex = unsigned_tx.trim_start_matches("0x");
+        let unsigned_tx_bytes = match hex::decode(unsigned_tx_hex){
+            Ok(bytes) => bytes,
+            Err(_) => return "Error: Failed to decode the unsigned transaction.".to_string(),
+        };
+
+        // Decode the unsigned transaction RLP.
+        // This unsigned tx is expected to have 9 fields:
+        // [nonce, gasPrice, gasLimit, to, value, data, v, r, s]
+        // In the unsigned tx, the v, r, s fields are placeholders (usually 0x80).
+        let rlp_unsigned = Rlp::new(&unsigned_tx_bytes);
+        let base_bytes = match base64::decode(&tx_signature){
+            Ok(bytes) => bytes,
+            Err(_) => return "Error: Failed to decode the transaction signature.".to_string()
+        };
+
+        let nonce = match rlp_unsigned.at(0) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(_) => return "Error: Failed to decode the nonce.".to_string(),
+            },
+            Err(_) => return "Error: Failed to decode the nonce.".to_string(),
+        };
+
+        let gas_price = match rlp_unsigned.at(1) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(_) =>return "Error: Failed to decode the gas price.".to_string(),
+            },
+            Err(_) => return "Error: Failed to decode the gas price.".to_string(),
+        };
+
+        let gas_limit = match rlp_unsigned.at(2) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(_) => return "Error: Failed to decode the gas limit.".to_string(),
+            },
+            Err(_) => return "Error: Failed to decode the gas limit.".to_string(),
+        };
+
+        let to = match rlp_unsigned.at(3) {
+            Ok(field) => match field.data() {
+                Ok(data) => data.to_vec(),
+                Err(_) => return "Error: Failed to decode the output.".to_string(),
+            },
+            Err(_) => return "Error: Failed to decode the output.".to_string(),
+        };
+
+        let value = match rlp_unsigned.at(4) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(_) => return "Error: Failed to decode the value.".to_string(),
+            },
+            Err(_) => return "Error: Failed to decode the value.".to_string(),
+        };
+
+        let data_field = match rlp_unsigned.at(5) {
+            Ok(field) => match field.data() {
+                Ok(data) => data.to_vec(),
+                Err(_) => return "Error: Failed to decode the data field.".to_string(),
+            },
+            Err(_) => return "Error: Failed to decode the data field.".to_string(),
+        };
+
+        let chain_id = match rlp_unsigned.at(6) {
+            Ok(field) => match field.as_val::<U256>() {
+                Ok(val) => val,
+                Err(_) => return "Error: Failed to decode the chain ID.".to_string(),
+            },
+            Err(_) => return "Error: Failed to decode the chain ID.".to_string(),
+        };
+
+        let r_sig = &base_bytes[0..32];
+        let s_sig = &base_bytes[32..64];
+        let v_sig = base_bytes[64];
+        
+        let recovery_id = if v_sig > 1 { v_sig - 27 } else { v_sig };
+        let v_eip155 = chain_id.low_u64() * 2 + 35 + recovery_id as u64;
+        let mut stream = RlpStream::new_list(9);
+        stream.append(&nonce);
+        stream.append(&gas_price);
+        stream.append(&gas_limit);
+        stream.append(&to);
+        stream.append(&value);
+        stream.append(&data_field);
+        stream.append(&v_eip155);
+        stream.append(&r_sig);
+        stream.append(&s_sig);
+
+        let signed_tx_bytes = stream.out().to_vec();
+        let signed_tx_hex = format!("0x{}", hex::encode(&signed_tx_bytes));
+        return signed_tx_hex;
+    }
+    pub fn get_nonce(&self) -> u64{
+        return self.nonce;
+    }
+    pub fn get_chain_id(&self) -> u64{
+        return self.chain_id;
+    }
     pub fn address(&mut self) -> String{
     	let xpub_tmp_str = &convert_to_xpub(self.xpub.clone()); //Xpub 1
         let xpub = match Xpub::from_str(&xpub_tmp_str){

@@ -9,6 +9,9 @@ export class Wallet {
   erc20_transfer(contract_address: string, recipient: string, token_amount: string, fee_rate: number): string;
   erc20_balance(contract_addresses: string[]): Promise<string[]>;
   broadcast(unsigned_tx: string, tx_signature: string): Promise<string>;
+  construct_signed_tx(unsigned_tx: string, tx_signature: string): string;
+  get_nonce(): bigint;
+  get_chain_id(): bigint;
   address(): string;
   balance(): string;
   estimate_fee(fee_rate: number, gas_limit: number): string;
