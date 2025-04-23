@@ -621,6 +621,14 @@ impl Wallet {
         let signed_tx_hex = format!("0x{}", hex::encode(&signed_tx_bytes));
         return signed_tx_hex;
     }
+    pub fn hex_to_b64(&self, tx_hash : String) -> String{
+        let hex_str = tx_hash.strip_prefix("0x").unwrap_or(&tx_hash);
+        let bytes = match hex::decode(hex_str){
+            Ok(hex) => hex,
+            Err(_) => return "Error: Invalid hex string.".to_string(),
+        };
+        return base64::encode(&bytes);
+    }
     pub fn get_nonce(&self) -> u64{
         return self.nonce;
     }

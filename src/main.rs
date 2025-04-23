@@ -43,4 +43,5 @@ async fn main() {
     //println!("contract data {}: ",con_data);
     println!("nonce: {:?}",wal.get_nonce());
     println!("chain_id: {:?}",wal.get_chain_id());
+    println!("hex to b64: {:?}",wal.hex_to_b64("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()));
 }
