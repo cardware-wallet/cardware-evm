@@ -10,6 +10,7 @@ export const wallet_erc20_transfer: (a: number, b: number, c: number, d: number,
 export const wallet_erc20_balance: (a: number, b: number, c: number) => any;
 export const wallet_broadcast: (a: number, b: number, c: number, d: number, e: number) => any;
 export const wallet_construct_signed_tx: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+export const wallet_hex_to_b64: (a: number, b: number, c: number) => [number, number];
 export const wallet_get_nonce: (a: number) => bigint;
 export const wallet_get_chain_id: (a: number) => bigint;
 export const wallet_address: (a: number) => [number, number];

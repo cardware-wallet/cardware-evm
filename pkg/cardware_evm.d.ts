@@ -10,6 +10,7 @@ export class Wallet {
   erc20_balance(contract_addresses: string[]): Promise<string[]>;
   broadcast(unsigned_tx: string, tx_signature: string): Promise<string>;
   construct_signed_tx(unsigned_tx: string, tx_signature: string): string;
+  hex_to_b64(tx_hash: string): string;
   get_nonce(): bigint;
   get_chain_id(): bigint;
   address(): string;
