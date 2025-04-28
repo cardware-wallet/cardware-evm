@@ -216,11 +216,11 @@ function passArrayJsValueToWasm0(array, malloc) {
     return ptr;
 }
 function __wbg_adapter_30(arg0, arg1, arg2) {
-    wasm.closure156_externref_shim(arg0, arg1, arg2);
+    wasm.closure161_externref_shim(arg0, arg1, arg2);
 }
 
-function __wbg_adapter_108(arg0, arg1, arg2, arg3) {
-    wasm.closure207_externref_shim(arg0, arg1, arg2, arg3);
+function __wbg_adapter_111(arg0, arg1, arg2, arg3) {
+    wasm.closure212_externref_shim(arg0, arg1, arg2, arg3);
 }
 
 const __wbindgen_enum_RequestCredentials = ["omit", "same-origin", "include"];
@@ -290,6 +290,75 @@ export class Wallet {
         } finally {
             wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
         }
+    }
+    /**
+     * @param {string} to
+     * @param {string} value
+     * @param {number} fee_rate
+     * @returns {string}
+     */
+    send_eip1559(to, value, fee_rate) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(to, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ret = wasm.wallet_send_eip1559(this.__wbg_ptr, ptr0, len0, ptr1, len1, fee_rate);
+            deferred3_0 = ret[0];
+            deferred3_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
+     * @param {string} to
+     * @param {string} value
+     * @param {string} max_priority_fee_per_gas
+     * @param {string} max_fee_per_gas
+     * @param {string} gas_limit
+     * @param {string} data
+     * @returns {string}
+     */
+    prepare_eip1559(to, value, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, data) {
+        let deferred7_0;
+        let deferred7_1;
+        try {
+            const ptr0 = passStringToWasm0(to, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(max_priority_fee_per_gas, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(max_fee_per_gas, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(gas_limit, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(data, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ret = wasm.wallet_prepare_eip1559(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5);
+            deferred7_0 = ret[0];
+            deferred7_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred7_0, deferred7_1, 1);
+        }
+    }
+    /**
+     * Reconstruct & broadcast a signed EIP-1559 tx from `<hex-rlp>` + base64 signature.
+     * @param {string} unsigned_tx
+     * @param {string} tx_signature
+     * @returns {Promise<string>}
+     */
+    broadcast_eip1559(unsigned_tx, tx_signature) {
+        const ptr0 = passStringToWasm0(unsigned_tx, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(tx_signature, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wallet_broadcast_eip1559(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+        return ret;
     }
     /**
      * @param {string} contract_address
@@ -549,7 +618,7 @@ export function __wbg_new_23a2665fac83c611(arg0, arg1) {
             const a = state0.a;
             state0.a = 0;
             try {
-                return __wbg_adapter_108(a, state0.b, arg0, arg1);
+                return __wbg_adapter_111(a, state0.b, arg0, arg1);
             } finally {
                 state0.a = a;
             }
@@ -725,8 +794,8 @@ export function __wbindgen_cb_drop(arg0) {
     return ret;
 };
 
-export function __wbindgen_closure_wrapper516(arg0, arg1, arg2) {
-    const ret = makeMutClosure(arg0, arg1, 157, __wbg_adapter_30);
+export function __wbindgen_closure_wrapper534(arg0, arg1, arg2) {
+    const ret = makeMutClosure(arg0, arg1, 162, __wbg_adapter_30);
     return ret;
 };
 

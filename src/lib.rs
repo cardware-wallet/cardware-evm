@@ -174,6 +174,242 @@ impl Wallet {
         let final_str = unsigned_tx + ":&" + &base64::encode(&total_bytes);
         return final_str;
     }
+    pub fn send_eip1559(&self, to: String, value: &str, fee_rate: i32) -> String {
+        // 1) parse the value
+        let value_u256 = match U256::from_dec_str(value) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to parse value.".to_string(),
+        };
+
+        // 2) gas settings
+        let gas_limit: u64 = 21_000;
+        let base_gas = match gas_price_from_string(&self.gas_price) {
+            g => g,
+        };
+        let new_max_fee = match fee_rate {
+            0 => base_gas.clone(),
+            1 => base_gas.clone() * U256::from(15) / U256::from(10),
+            2 => base_gas.clone() * U256::from(20) / U256::from(10),
+            _ => base_gas.clone(),
+        };
+        let max_priority_fee = new_max_fee.clone();
+
+        // 3) to address
+        let to_addr = match Address::from_str(&to) {
+            Ok(a) => a,
+            Err(_) => Address::zero(),
+        };
+
+        // 4) RLP-encode [chain_id, nonce, maxPri, maxFee, gasLimit, to, value, data, accessList]
+        let mut stream = RlpStream::new_list(9);
+        stream.append(&self.chain_id);
+        stream.append(&U256::from(self.nonce));
+        stream.append(&max_priority_fee);
+        stream.append(&new_max_fee);
+        stream.append(&U256::from(gas_limit));
+        stream.append(&to_addr);
+        stream.append(&value_u256);
+        stream.append(&Vec::<u8>::new());   // empty data
+        stream.begin_list(0);               // empty accessList
+        let rlp_payload = stream.out().to_vec();
+
+        // 5) compute keccak256(0x02 || payload)
+        let mut hasher = Keccak::v256();
+        let mut sign_hash = [0u8; 32];
+        hasher.update(&[0x02]);
+        hasher.update(&rlp_payload);
+        hasher.finalize(&mut sign_hash);
+
+        // 6) append derivation for the HW wallet
+        let mut to_sign = sign_hash.to_vec();
+        match extract_u16s(&self.account_derivation_path) {
+            Ok((h1, h2)) => append_integers_as_bytes(&mut to_sign, h1, h2),
+            Err(_) => return "Error: Derivation path error.".to_string(),
+        }
+
+        // 7) return hex(payload) :& base64(sign_hash||derivation)
+        let unsigned_hex = hex::encode(rlp_payload);
+        let blob = base64::encode(&to_sign);
+        format!("{}:&{}", unsigned_hex, blob)
+    }
+    pub fn prepare_eip1559(
+        &self,
+        to: String,
+        value: String,
+        max_priority_fee_per_gas: String,
+        max_fee_per_gas: String,
+        gas_limit: String,
+        data: String
+    ) -> String {
+        // parse the decimal/hex strings into U256
+        let value_u256 = U256::from_dec_str(&value)
+            .unwrap_or_else(|_| U256::zero());
+
+        let pri = U256::from_str_radix(
+            max_priority_fee_per_gas.trim_start_matches("0x"),
+            16
+        ).unwrap_or_else(|_| U256::zero());
+
+        let fee = U256::from_str_radix(
+            max_fee_per_gas.trim_start_matches("0x"),
+            16
+        ).unwrap_or_else(|_| U256::zero());
+
+        let gas_limit_u256 = U256::from_str_radix(
+            gas_limit.trim_start_matches("0x"),
+            16
+        ).unwrap_or_else(|_| U256::zero());
+
+        let to_addr = Address::from_str(&to)
+            .unwrap_or(Address::zero());
+
+        // RLP‐encode the nine EIP-1559 fields:
+        // [ chain_id, nonce, pri, fee, gas_limit, to, value, data, accessList ]
+        let mut stream = RlpStream::new_list(9);
+        stream.append(&U256::from(self.chain_id));
+        stream.append(&U256::from(self.nonce));
+        stream.append(&pri);
+        stream.append(&fee);
+        stream.append(&gas_limit_u256);
+        stream.append(&to_addr);
+        stream.append(&value_u256);
+
+        // data bytes
+        let data_bytes = hex::decode(data.trim_start_matches("0x"))
+            .unwrap_or_default();
+        stream.append(&data_bytes);
+
+        // empty access list
+        stream.begin_list(0);
+
+        let rlp_payload = stream.out().to_vec();
+
+        // sign‐hash = keccak256(0x02 || RLP_payload)
+        let mut hasher = Keccak::v256();
+        hasher.update(&[0x02]);
+        hasher.update(&rlp_payload);
+        let mut sign_hash = [0u8; 32];
+        hasher.finalize(&mut sign_hash);
+
+        // append derivation so the HW knows which key to use
+        let mut to_sign = sign_hash.to_vec();
+        match extract_u16s(&self.account_derivation_path) {
+            Ok((h1, h2)) => append_integers_as_bytes(&mut to_sign, h1, h2),
+            Err(_) => return "Error: Derivation path error.".to_string(),
+        }
+
+        let hex_rlp = hex::encode(rlp_payload);
+        let b64      = base64::encode(&to_sign);
+        format!("{}:&{}", hex_rlp, b64)
+    }
+    /// Reconstruct & broadcast a signed EIP-1559 tx from `<hex-rlp>` + base64 signature.
+    pub async fn broadcast_eip1559(&mut self, unsigned_tx: String, tx_signature: String) -> String {
+        // 1) decode the RLP payload
+        let hex_str = unsigned_tx.trim_start_matches("0x");
+        let mut raw = match hex::decode(hex_str) {
+            Ok(b) => b,
+            Err(_) => return "Error: Failed to decode the unsigned transaction.".to_string(),
+        };
+        // if it starts with the type‐2 marker, strip it off:
+        if raw.first() == Some(&0x02) {
+            raw = raw[1..].to_vec();
+        }
+        let rlp = Rlp::new(&raw);
+
+        // 2) extract each field with explicit matches
+        let chain_id = match rlp.at(0).and_then(|f| f.as_val::<U256>()) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to decode chain ID.".to_string(),
+        };
+        let nonce = match rlp.at(1).and_then(|f| f.as_val::<U256>()) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to decode nonce.".to_string(),
+        };
+        let max_prio = match rlp.at(2).and_then(|f| f.as_val::<U256>()) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to decode max priority fee.".to_string(),
+        };
+        let max_fee = match rlp.at(3).and_then(|f| f.as_val::<U256>()) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to decode max fee.".to_string(),
+        };
+        let gas_limit = match rlp.at(4).and_then(|f| f.as_val::<U256>()) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to decode gas limit.".to_string(),
+        };
+        let to_addr = match rlp.at(5).and_then(|f| f.data().map(|d| d.to_vec())) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to decode to address.".to_string(),
+        };
+        let value = match rlp.at(6).and_then(|f| f.as_val::<U256>()) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to decode value.".to_string(),
+        };
+        let data_field = match rlp.at(7).and_then(|f| f.data().map(|d| d.to_vec())) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to decode data field.".to_string(),
+        };
+        // 8th element is the accessList — we know it was empty, so skip explicit decode
+
+        // 3) decode the signature blob
+        let sig = match base64::decode(&tx_signature) {
+            Ok(b) => b,
+            Err(_) => return "Error: Failed to decode the transaction signature.".to_string(),
+        };
+        if sig.len() < 65 {
+            return "Error: Signature length is invalid.".to_string();
+        }
+        let r_sig = &sig[0..32];
+        let s_sig = &sig[32..64];
+        let v_raw = sig[64];
+        let rec_id = if v_raw > 1 { v_raw - 27 } else { v_raw };
+
+        // 4) RLP-encode the signed tx:
+        let mut stre = RlpStream::new_list(12);
+        stre.append(&chain_id);
+        stre.append(&nonce);
+        stre.append(&max_prio);
+        stre.append(&max_fee);
+        stre.append(&gas_limit);
+        stre.append(&to_addr);
+        stre.append(&value);
+        stre.append(&data_field);
+        stre.begin_list(0);               // empty accessList
+        stre.append(&U256::from(rec_id));
+        stre.append(&r_sig);
+        stre.append(&s_sig);
+        let signed_rlp = stre.out().to_vec();
+
+        // 5) prepend type byte and hex
+        let mut raw = Vec::with_capacity(signed_rlp.len() + 1);
+        raw.push(0x02);
+        raw.extend(&signed_rlp);
+        let raw_hex = format!("0x{}", hex::encode(raw));
+
+        //let raw_hex = format!("0x{}", hex::encode(raw_tx));
+        // 👉 DEBUG: print (or even return) the fully signed RLP so you can inspect it
+        //println!("DEBUG signed_raw_tx: {}", raw_hex);
+        //return raw_hex;   // <— you can early‐return here for testing
+        // 6) broadcast
+        let client = Client::new();
+        let body = json!({
+            "jsonrpc": "2.0",
+            "method": "eth_sendRawTransaction",
+            "params": [ raw_hex ],
+            "id": 1
+        });
+        if let Ok(resp) = client.post(&self.infura_url).json(&body).send().await {
+            if let Ok(j) = resp.json::<serde_json::Value>().await {
+                if let Some(r) = j.get("result").and_then(|r| r.as_str()) {
+                    return r.to_string();
+                }
+                if let Some(e) = j.get("error") {
+                    return format!("Error: {:?}", e);
+                }
+            }
+        }
+        "Error: Failed to broadcast transaction.".to_string()
+    }
     pub async fn validate_contract(&mut self, contract_address: String) -> String {
         let url = self.infura_url.clone();
         let client = reqwest::Client::new();

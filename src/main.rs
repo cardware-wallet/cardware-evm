@@ -10,7 +10,7 @@ async fn main() {
     let res = wal.sync().await;
     println!("Res? {:?}",res);
     println!("Eth balance: {:?}",wal.balance());
-    let res = wal.send("0x02A8665a18BBa2D1B4766e2D71977A781b97592e".to_string(),"544000000000",1);
+    let res = wal.send_eip1559("0x02A8665a18BBa2D1B4766e2D71977A781b97592e".to_string(),"544000000000",1);
     println!("RES: {:?}",res);
 
     //estimate fee example:
@@ -20,7 +20,12 @@ async fn main() {
     println!("fee est erc20: {:?}",fee_est);
 
 
+    let broadcast_result = wal.broadcast_eip1559("ec01088427a87b4c8427a87b4c8252089402a8665a18bba2d1b4766e2d71977a781b97592e857ea8ed400080c0".to_string(),
+                                                  "L7njNYeLFGE1bwVkPdOEpVLGM7RYl41FOuKsZsruIJkzp/JuJ4I+OBweMcUAwnV8sL3hBLQlSpKFIhg1A06Eqxs=".to_string()).await;
+
+    println!("b result {:?}",broadcast_result);
     //Erc20 Balance
+    /*
     let erc_bal = wal.erc20_balance(["0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
                                       "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()].to_vec()).await;
     println!("erc20 bal: {:?}",erc_bal);
@@ -47,4 +52,5 @@ async fn main() {
     let res3 = wal.construct_signed_tx("0x02f8700108847735940085017e73c1dc82fe7b94a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4880b844095ea7b3000000000000000000000000000000000022d473030f116ddee9f6b43ac78ba3ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc0808080".to_string(),
                                       "148v8u32WP1MW3JOk/Iz1OOKMZ8jLO4An1jcfGzx7AksGQtP+dm8lw6Zri94txhV+gQEeMrnvleImffPG1wQkRs=".to_string());
     println!("reso {:?}",res3);
+    */
 }
