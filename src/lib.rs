@@ -527,99 +527,173 @@ impl Wallet {
         }
         return "Error: Failed to broadcast transaction.".to_string();
     }
-    pub fn construct_signed_tx(&self, unsigned_tx : String, tx_signature : String) -> String{
-        let unsigned_tx_hex = unsigned_tx.trim_start_matches("0x");
-        let unsigned_tx_bytes = match hex::decode(unsigned_tx_hex){
-            Ok(bytes) => bytes,
+    pub fn construct_signed_tx(&self, unsigned_tx: String, tx_signature: String) -> String {
+        // 1. strip 0x and hex-decode
+        let unsigned_hex = unsigned_tx.trim_start_matches("0x");
+        let mut tx_bytes = match hex::decode(unsigned_hex) {
+            Ok(b) => b,
             Err(_) => return "Error: Failed to decode the unsigned transaction.".to_string(),
         };
 
-        // Decode the unsigned transaction RLP.
-        // This unsigned tx is expected to have 9 fields:
-        // [nonce, gasPrice, gasLimit, to, value, data, v, r, s]
-        // In the unsigned tx, the v, r, s fields are placeholders (usually 0x80).
-        let rlp_unsigned = Rlp::new(&unsigned_tx_bytes);
-        let base_bytes = match base64::decode(&tx_signature){
-            Ok(bytes) => bytes,
-            Err(_) => return "Error: Failed to decode the transaction signature.".to_string()
+        // 2. detect & strip EIP-1559 prefix
+        let is_eip1559 = tx_bytes.get(0).map(|b| *b == 0x02).unwrap_or(false);
+        if is_eip1559 {
+            // drop the 0x02 tag
+            tx_bytes = tx_bytes.split_off(1);
+        }
+
+        // 3. RLP-decode
+        let rlp = Rlp::new(&tx_bytes);
+
+        // 4. helpers for per-field error handling
+        let get_u256 = |idx: usize, msg: &str| {
+            rlp.at(idx)
+                .and_then(|f| f.as_val::<U256>())
+                .map_err(|_| msg.to_string())
+        };
+        let get_bytes = |idx: usize, msg: &str| {
+            rlp.at(idx)
+                .and_then(|f| f.data())
+                .map(|d| d.to_vec())
+                .map_err(|_| msg.to_string())
         };
 
-        let nonce = match rlp_unsigned.at(0) {
-            Ok(field) => match field.as_val::<U256>() {
-                Ok(val) => val,
-                Err(_) => return "Error: Failed to decode the nonce.".to_string(),
-            },
-            Err(_) => return "Error: Failed to decode the nonce.".to_string(),
+        // 5. pull out fields in the correct order
+        let (chain_id, nonce, max_priority_fee, max_fee, gas_limit, to, value, data_field) =
+            if is_eip1559 {
+                // type-2 fields: [chainId, nonce, maxPriorityFeePerGas,
+                //                   maxFeePerGas, gasLimit, to, value, data, accessList…]
+                let chain_id = match get_u256(0, "Error: Failed to decode the chain ID.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let nonce = match get_u256(1, "Error: Failed to decode the nonce.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let max_priority_fee = match get_u256(
+                    2,
+                    "Error: Failed to decode the max priority fee per gas.",
+                ) {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let max_fee = match get_u256(3, "Error: Failed to decode the max fee per gas.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let gas_limit = match get_u256(4, "Error: Failed to decode the gas limit.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let to = match get_bytes(5, "Error: Failed to decode the output.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let value = match get_u256(6, "Error: Failed to decode the value.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let data_field = match get_bytes(7, "Error: Failed to decode the data field.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                (chain_id, nonce, max_priority_fee, max_fee, gas_limit, to, value, data_field)
+            } else {
+                // legacy fields: [nonce, gasPrice, gasLimit, to, value, data, chainId…]
+                let nonce = match get_u256(0, "Error: Failed to decode the nonce.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let gas_price = match get_u256(1, "Error: Failed to decode the gas price.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let gas_limit = match get_u256(2, "Error: Failed to decode the gas limit.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let to = match get_bytes(3, "Error: Failed to decode the output.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let value = match get_u256(4, "Error: Failed to decode the value.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let data_field = match get_bytes(5, "Error: Failed to decode the data field.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                let chain_id = match get_u256(6, "Error: Failed to decode the chain ID.") {
+                    Ok(v) => v,
+                    Err(e) => return e,
+                };
+                // for legacy, both priority & max fees are simply gasPrice
+                (chain_id, nonce, gas_price, gas_price, gas_limit, to, value, data_field)
+            };
+
+        // 6. decode the signature
+        let sig_bytes = match base64::decode(&tx_signature) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to decode the transaction signature.".to_string(),
+        };
+        if sig_bytes.len() < 65 {
+            return "Error: Failed to decode the transaction signature.".to_string();
+        }
+        let r_sig = &sig_bytes[0..32];
+        let s_sig = &sig_bytes[32..64];
+        let v_raw = sig_bytes[64];
+        let recovery_id = if v_raw > 1 { v_raw - 27 } else { v_raw };
+        let v_calc = chain_id.low_u64() * 2 + 35 + recovery_id as u64;
+
+        let v_field = if is_eip1559 {
+            U256::from(recovery_id as u64)
+        } else {
+            U256::from(chain_id.low_u64() * 2 + 35 + recovery_id as u64)
         };
 
-        let gas_price = match rlp_unsigned.at(1) {
-            Ok(field) => match field.as_val::<U256>() {
-                Ok(val) => val,
-                Err(_) =>return "Error: Failed to decode the gas price.".to_string(),
-            },
-            Err(_) => return "Error: Failed to decode the gas price.".to_string(),
+        // 7. rebuild the signed RLP
+        let mut stream = if is_eip1559 {
+            RlpStream::new_list(12)
+        } else {
+            RlpStream::new_list(9)
         };
 
-        let gas_limit = match rlp_unsigned.at(2) {
-            Ok(field) => match field.as_val::<U256>() {
-                Ok(val) => val,
-                Err(_) => return "Error: Failed to decode the gas limit.".to_string(),
-            },
-            Err(_) => return "Error: Failed to decode the gas limit.".to_string(),
-        };
+        if is_eip1559 {
+            stream.append(&chain_id);
+            stream.append(&nonce);
+            stream.append(&max_priority_fee);
+            stream.append(&max_fee);
+            stream.append(&gas_limit);
+            stream.append(&to);
+            stream.append(&value);
+            stream.append(&data_field);
+            stream.begin_list(0); // empty accessList
+            stream.append_raw(&[recovery_id], 1);
+            stream.append(&r_sig);
+            stream.append(&s_sig);
+        } else {
+            stream.append(&nonce);
+            stream.append(&max_priority_fee); // gasPrice
+            stream.append(&gas_limit);
+            stream.append(&to);
+            stream.append(&value);
+            stream.append(&data_field);
+            stream.append(&v_calc);
+            stream.append(&r_sig);
+            stream.append(&s_sig);
+        }
 
-        let to = match rlp_unsigned.at(3) {
-            Ok(field) => match field.data() {
-                Ok(data) => data.to_vec(),
-                Err(_) => return "Error: Failed to decode the output.".to_string(),
-            },
-            Err(_) => return "Error: Failed to decode the output.".to_string(),
-        };
+        let mut signed_bytes = stream.out().to_vec();
+        if is_eip1559 {
+            // re-prefix with 0x02
+            let mut pref = vec![0x02];
+            pref.append(&mut signed_bytes);
+            signed_bytes = pref;
+        }
 
-        let value = match rlp_unsigned.at(4) {
-            Ok(field) => match field.as_val::<U256>() {
-                Ok(val) => val,
-                Err(_) => return "Error: Failed to decode the value.".to_string(),
-            },
-            Err(_) => return "Error: Failed to decode the value.".to_string(),
-        };
-
-        let data_field = match rlp_unsigned.at(5) {
-            Ok(field) => match field.data() {
-                Ok(data) => data.to_vec(),
-                Err(_) => return "Error: Failed to decode the data field.".to_string(),
-            },
-            Err(_) => return "Error: Failed to decode the data field.".to_string(),
-        };
-
-        let chain_id = match rlp_unsigned.at(6) {
-            Ok(field) => match field.as_val::<U256>() {
-                Ok(val) => val,
-                Err(_) => return "Error: Failed to decode the chain ID.".to_string(),
-            },
-            Err(_) => return "Error: Failed to decode the chain ID.".to_string(),
-        };
-
-        let r_sig = &base_bytes[0..32];
-        let s_sig = &base_bytes[32..64];
-        let v_sig = base_bytes[64];
-        
-        let recovery_id = if v_sig > 1 { v_sig - 27 } else { v_sig };
-        let v_eip155 = chain_id.low_u64() * 2 + 35 + recovery_id as u64;
-        let mut stream = RlpStream::new_list(9);
-        stream.append(&nonce);
-        stream.append(&gas_price);
-        stream.append(&gas_limit);
-        stream.append(&to);
-        stream.append(&value);
-        stream.append(&data_field);
-        stream.append(&v_eip155);
-        stream.append(&r_sig);
-        stream.append(&s_sig);
-
-        let signed_tx_bytes = stream.out().to_vec();
-        let signed_tx_hex = format!("0x{}", hex::encode(&signed_tx_bytes));
-        return signed_tx_hex;
+        format!("0x{}", hex::encode(&signed_bytes))
     }
     pub fn hex_to_b64(&self, tx_hash : String) -> String{
         let hex_str = tx_hash.strip_prefix("0x").unwrap_or(&tx_hash);

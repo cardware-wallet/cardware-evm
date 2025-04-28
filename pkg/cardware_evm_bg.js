@@ -725,7 +725,7 @@ export function __wbindgen_cb_drop(arg0) {
     return ret;
 };
 
-export function __wbindgen_closure_wrapper512(arg0, arg1, arg2) {
+export function __wbindgen_closure_wrapper516(arg0, arg1, arg2) {
     const ret = makeMutClosure(arg0, arg1, 157, __wbg_adapter_30);
     return ret;
 };
