@@ -13,6 +13,8 @@ use tiny_keccak::Keccak;
 use tiny_keccak::Hasher;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
+use ethers_core::abi::{AbiParser, Function, Token};
+use sha3::{Digest, Keccak256};
 
 #[wasm_bindgen]
 pub struct Wallet{
@@ -232,75 +234,334 @@ impl Wallet {
         let blob = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, blob)
     }
-    pub fn prepare_eip1559(
+   pub fn prepare_eip1559(
+    &self,
+    to: String,
+    value: String,
+    max_priority_fee_per_gas: String,
+    max_fee_per_gas: String,
+    gas_limit: String,
+    data: String
+) -> String {
+    // 1) Parse all the hex‐encoded numeric inputs:
+    let value_u256 = match U256::from_str_radix(value.trim_start_matches("0x"), 16) {
+        Ok(v) => v,
+        Err(_) => return "Error: Failed to parse value.".to_string(),
+    };
+    let pri = match U256::from_str_radix(max_priority_fee_per_gas.trim_start_matches("0x"), 16) {
+        Ok(v) => v,
+        Err(_) => return "Error: Failed to parse max priority fee.".to_string(),
+    };
+    let fee = match U256::from_str_radix(max_fee_per_gas.trim_start_matches("0x"), 16) {
+        Ok(v) => v,
+        Err(_) => return "Error: Failed to parse max fee.".to_string(),
+    };
+    let gas_limit_u256 = match U256::from_str_radix(gas_limit.trim_start_matches("0x"), 16) {
+        Ok(v) => v,
+        Err(_) => return "Error: Failed to parse gas limit.".to_string(),
+    };
+
+    // 2) Parse the “to” address
+    let to_addr = match Address::from_str(&to) {
+        Ok(a) => a,
+        Err(_) => return "Error: Failed to parse recipient address.".to_string(),
+    };
+
+    // 3) Decode the `data` payload
+    let data_bytes = match hex::decode(data.trim_start_matches("0x")) {
+        Ok(d) => d,
+        Err(_) => return "Error: Failed to decode data field.".to_string(),
+    };
+
+    // 4) RLP‐encode the EIP-1559 transaction fields:
+    //    [ chain_id, nonce, pri, fee, gas_limit, to, value, data, [] ]
+    let mut stream = RlpStream::new_list(9);
+    stream.append(&U256::from(self.chain_id));
+    stream.append(&U256::from(self.nonce));
+    stream.append(&pri);
+    stream.append(&fee);
+    stream.append(&gas_limit_u256);
+    stream.append(&to_addr);
+    stream.append(&value_u256);
+    stream.append(&data_bytes);
+    stream.begin_list(0);
+    let rlp_payload = stream.out().to_vec();
+
+    // 5) Compute the pre-signing hash: keccak256(0x02 || rlp_payload)
+    let mut hasher = Keccak::v256();
+    hasher.update(&[0x02]);
+    hasher.update(&rlp_payload);
+    let mut sign_hash = [0u8; 32];
+    hasher.finalize(&mut sign_hash);
+
+    // 6) Append derivation path bytes so the HW can pick the right key
+    let mut to_sign = sign_hash.to_vec();
+    match extract_u16s(&self.account_derivation_path) {
+        Ok((h1, h2)) => append_integers_as_bytes(&mut to_sign, h1, h2),
+        Err(_)      => return "Error: Derivation path error.".to_string(),
+    }
+
+    // 7) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
+    let unsigned_hex = hex::encode(&rlp_payload);
+    let b64        = base64::encode(&to_sign);
+    format!("{}:&{}", unsigned_hex, b64)
+}
+    pub fn prepare_permit2(&self, full_calldata: String) -> String {
+        // Debug: raw input
+        println!("DEBUG: full_calldata = {}", full_calldata);
+        // 1) Decode hex
+        let data_hex = full_calldata.trim_start_matches("0x");
+        let all = match hex::decode(data_hex) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("DEBUG: decode error: {:?}", e);
+                return "Error: invalid calldata hex".to_string();
+            }
+        };
+        println!("DEBUG: decoded bytes len = {}", all.len());
+        if all.len() < 4 {
+            println!("DEBUG: calldata too short");
+            return "Error: calldata too short".to_string();
+        }
+        // Permit2 selector
+        let permit_selector = [0xd5, 0x05, 0xac, 0xcf];
+        println!("DEBUG: head4 = {:02x?}", &all[0..4]);
+
+                        // 2) Extract permit_full
+        let permit_full: Vec<u8> = if all[0..4] == permit_selector {
+            println!("DEBUG: standalone permitTransferFrom");
+            all.clone()
+        } else {
+            println!("DEBUG: nested execute flow");
+            // strip execute selector
+            let data = &all[4..];
+            println!("DEBUG: execute data len = {}", data.len());
+            // parse inputs[] dynamic array at head[1]
+            if data.len() < 64 {
+                println!("DEBUG: missing execute heads");
+                return "Error: missing execute head".to_string();
+            }
+            // head[1] = offset to inputs[] array
+            let inputs_off = U256::from_big_endian(&data[32..64]).low_u64() as usize;
+            println!("DEBUG: inputs_off = {}", inputs_off);
+            if data.len() < inputs_off + 32 {
+                println!("DEBUG: invalid inputs offset");
+                return "Error: invalid inputs offset".to_string();
+            }
+            // number of elements in inputs[]
+            let inputs_len = U256::from_big_endian(&data[inputs_off..inputs_off+32]).low_u64() as usize;
+            println!("DEBUG: inputs_len = {}", inputs_len);
+            if inputs_len == 0 {
+                println!("DEBUG: no inputs");
+                return "Error: no inputs".to_string();
+            }
+            // scan each inputs element for permit selector
+            let mut found = None;
+            for i in 0..inputs_len {
+                let head = inputs_off + 32 + i * 32;
+                println!("DEBUG: input[{}] head at {}", i, head);
+                if data.len() < head + 32 {
+                    println!("DEBUG: invalid input head");
+                    return "Error: invalid input head".to_string();
+                }
+                // offset to element data
+                let rel = U256::from_big_endian(&data[head..head+32]).low_u64() as usize;
+                println!("DEBUG: input[{}] rel_off = {}", i, rel);
+                if data.len() < rel + 32 {
+                    println!("DEBUG: invalid input rel_off");
+                    return "Error: invalid input rel_off".to_string();
+                }
+                // length of element data
+                let elem_len = U256::from_big_endian(&data[rel..rel+32]).low_u64() as usize;
+                println!("DEBUG: input[{}] elem_len = {}", i, elem_len);
+                let start = rel + 32;
+                let end = start + elem_len;
+                if data.len() < end {
+                    println!("DEBUG: invalid input length");
+                    return "Error: invalid input length".to_string();
+                }
+                println!("DEBUG: input[{}] first4 = {:02x?}", i, &data[start..start+4]);
+                if elem_len >= 4 && data[start..start+4] == permit_selector {
+                    println!("DEBUG: found permit in input[{}]", i);
+                    found = Some(data[start..end].to_vec());
+                    break;
+                }
+            }
+            match found {
+                Some(v) => v,
+                None => {
+                    println!("DEBUG: permitTransferFrom not found in inputs[]");
+                    return ":&".to_string();
+                }
+            }
+        };
+
+        // 3) Compute struct_start offset offset offset
+        let struct_start = 4 + 2 * 32;
+        println!("DEBUG: struct_start = {}, need {}", struct_start, struct_start + 6 * 32);
+        if permit_full.len() < struct_start + 6 * 32 {
+            println!("DEBUG: incomplete struct, len {} < {}", permit_full.len(), struct_start + 6 * 32);
+            return "Error: incomplete struct".to_string();
+        }
+
+        // 4) Build EIP-712 struct hash
+        let type_hash = Keccak256::digest(
+            b"PermitSingle(address token,address owner,address spender,uint256 amount,uint256 expiration,uint256 nonce)"
+        );
+        let mut enc = type_hash.to_vec();
+        for i in 0..6 {
+            let start = struct_start + i * 32;
+            let end = start + 32;
+            enc.extend(&permit_full[start..end]);
+        }
+        let struct_hash = Keccak256::digest(&enc);
+
+        // 5) Domain separator
+        let domain_typehash = Keccak256::digest(
+            b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+        );
+        let name_hash = Keccak256::digest(b"Permit2");
+        let version_hash = Keccak256::digest(b"1");
+        let mut domain_enc = domain_typehash.to_vec();
+        domain_enc.extend(&name_hash);
+        domain_enc.extend(&version_hash);
+        let mut chain_bytes = [0u8; 32]; U256::from(self.chain_id).to_big_endian(&mut chain_bytes);
+        domain_enc.extend(&chain_bytes);
+        let permit2_addr = Address::from_str("<PERMIT2_ADDRESS>").unwrap();
+        let mut addr_bytes = [0u8; 32]; addr_bytes[12..].copy_from_slice(&permit2_addr.0);
+        domain_enc.extend(&addr_bytes);
+        let domain_sep = Keccak256::digest(&domain_enc);
+
+        // 6) Final digest
+        let mut digest_data = Vec::with_capacity(2 + 32 + 32);
+        digest_data.push(0x19);
+        digest_data.push(0x01);
+        digest_data.extend(&domain_sep);
+        digest_data.extend(&struct_hash);
+        let digest = Keccak256::digest(&digest_data);
+
+        // 7) Append derivation path
+        let mut to_sign = digest.to_vec();
+        if let Ok((h1, h2)) = extract_u16s(&self.account_derivation_path) {
+            append_integers_as_bytes(&mut to_sign, h1, h2);
+        } else {
+            println!("DEBUG: derivation failed");
+            return "Error: derivation".to_string();
+        }
+
+        // 8) Return raw permit and signing blob
+        let hex_no_sig = hex::encode(&permit_full);
+        let b64 = base64::encode(&to_sign);
+        println!("DEBUG: result= {}:&{}", hex_no_sig, b64);
+        format!("{}:&{}", hex_no_sig, b64)
+    }
+
+    /// Prepare the full EIP-1559 execute transaction including the signed Permit2.
+    /// Returns `<rlp_payload_hex>:&<base64(tx_digest||derivation)>`.
+    #[wasm_bindgen(js_name = prepareEip1559Execute)]
+    pub fn prepare_eip1559_execute(
         &self,
         to: String,
         value: String,
         max_priority_fee_per_gas: String,
         max_fee_per_gas: String,
         gas_limit: String,
-        data: String
+        full_calldata: String,
+        permit_signature_b64: String,
     ) -> String {
-        // parse the decimal/hex strings into U256
-        let value_u256 = U256::from_dec_str(&value)
-            .unwrap_or_else(|_| U256::zero());
-
-        let pri = U256::from_str_radix(
-            max_priority_fee_per_gas.trim_start_matches("0x"),
-            16
-        ).unwrap_or_else(|_| U256::zero());
-
-        let fee = U256::from_str_radix(
-            max_fee_per_gas.trim_start_matches("0x"),
-            16
-        ).unwrap_or_else(|_| U256::zero());
-
-        let gas_limit_u256 = U256::from_str_radix(
-            gas_limit.trim_start_matches("0x"),
-            16
-        ).unwrap_or_else(|_| U256::zero());
-
-        let to_addr = Address::from_str(&to)
-            .unwrap_or(Address::zero());
-
-        // RLP‐encode the nine EIP-1559 fields:
-        // [ chain_id, nonce, pri, fee, gas_limit, to, value, data, accessList ]
+        // 1. Decode calldata
+        let data = match hex::decode(full_calldata.trim_start_matches("0x")) {
+            Ok(b) => b,
+            Err(_) => return "Error: invalid calldata hex".to_string(),
+        };
+        // 2. ABI parse & decode execute
+        let mut parser = AbiParser::default();
+        let execute_fn = match parser.parse_function("execute(bytes,bytes[],address)") {
+            Ok(f) => f,
+            Err(_) => return "Error: parse execute ABI".to_string(),
+        };
+        let tokens = match execute_fn.decode_input(&data) {
+            Ok(t) => t,
+            Err(_) => return "Error: decode execute input".to_string(),
+        };
+        // 3. Replace inputs[0] with the signed permit
+        let mut inputs = match &tokens[1] {
+            Token::Array(arr) => arr.clone(),
+            _ => return "Error: invalid inputs".to_string(),
+        };
+        let sig_bytes = match base64::decode(&permit_signature_b64) {
+            Ok(b) => b,
+            Err(_) => return "Error: invalid permit signature".to_string(),
+        };
+        let sig_token = Token::Bytes(sig_bytes);
+        let permit_fn = match parser.parse_function(
+            "permitTransferFrom((address token,address owner,address spender,uint256 amount,uint256 expiration,uint256 nonce),bytes)"
+        ) {
+            Ok(f) => f,
+            Err(_) => return "Error: parse permitTransferFrom ABI".to_string(),
+        };
+        // Decode original struct to reattach signature
+        let original_args = match &tokens[1] {
+            Token::Array(arr) => {
+                if let Token::Bytes(b) = &arr[0] {
+                    match permit_fn.decode_input(b) {
+                        Ok(decoded) => match &decoded[0] {
+                            Token::Tuple(v) => v.clone(),
+                            _ => return "Error: invalid original permit".to_string(),
+                        },
+                        Err(_) => return "Error: decode original permit".to_string(),
+                    }
+                } else { return "Error: invalid original permit".to_string() }
+            }
+            _ => return "Error: invalid inputs".to_string(),
+        };
+        let new_permit = match permit_fn.encode_input(&[
+            Token::Tuple(original_args), sig_token
+        ]) {
+            Ok(v) => v,
+            Err(_) => return "Error: encode new permit".to_string(),
+        };
+        inputs[0] = Token::Bytes(new_permit);
+        // 4. Re-encode full calldata
+        let recipient = tokens[2].clone();
+        let new_calldata = match execute_fn.encode_input(&[
+            tokens[0].clone(), Token::Array(inputs), recipient
+        ]) {
+            Ok(v) => v,
+            Err(_) => return "Error: re-encode execute calldata".to_string(),
+        };
+        // 5. Build EIP-1559 RLP
+        let to_addr = Address::from_str(&to).unwrap_or_default();
+        let val = U256::from_dec_str(&value).unwrap_or_default();
+        let pri = U256::from_dec_str(&max_priority_fee_per_gas).unwrap_or_default();
+        let fee = U256::from_dec_str(&max_fee_per_gas).unwrap_or_default();
+        let gas_lim = U256::from_dec_str(&gas_limit).unwrap_or_default();
         let mut stream = RlpStream::new_list(9);
         stream.append(&U256::from(self.chain_id));
         stream.append(&U256::from(self.nonce));
         stream.append(&pri);
         stream.append(&fee);
-        stream.append(&gas_limit_u256);
+        stream.append(&gas_lim);
         stream.append(&to_addr);
-        stream.append(&value_u256);
-
-        // data bytes
-        let data_bytes = hex::decode(data.trim_start_matches("0x"))
-            .unwrap_or_default();
-        stream.append(&data_bytes);
-
-        // empty access list
+        stream.append(&val);
+        stream.append(&new_calldata);
         stream.begin_list(0);
-
         let rlp_payload = stream.out().to_vec();
-
-        // sign‐hash = keccak256(0x02 || RLP_payload)
-        let mut hasher = Keccak::v256();
+        // 6. Compute transaction digest
+        let mut hasher = Keccak256::new();
         hasher.update(&[0x02]);
         hasher.update(&rlp_payload);
-        let mut sign_hash = [0u8; 32];
-        hasher.finalize(&mut sign_hash);
-
-        // append derivation so the HW knows which key to use
-        let mut to_sign = sign_hash.to_vec();
-        match extract_u16s(&self.account_derivation_path) {
-            Ok((h1, h2)) => append_integers_as_bytes(&mut to_sign, h1, h2),
-            Err(_) => return "Error: Derivation path error.".to_string(),
+        let tx_hash = hasher.finalize();
+        // 7. Append derivation and return
+        let mut to_sign = tx_hash.to_vec();
+        if let Ok((a,b)) = extract_u16s(&self.account_derivation_path) {
+            append_integers_as_bytes(&mut to_sign, a, b);
+        } else {
+            return "Error: derivation".to_string();
         }
-
         let hex_rlp = hex::encode(rlp_payload);
-        let b64      = base64::encode(&to_sign);
-        format!("{}:&{}", hex_rlp, b64)
+        let sig_blob = base64::encode(&to_sign);
+        format!("{}:&{}", hex_rlp, sig_blob)
     }
     /// Reconstruct & broadcast a signed EIP-1559 tx from `<hex-rlp>` + base64 signature.
     pub async fn broadcast_eip1559(&mut self, unsigned_tx: String, tx_signature: String) -> String {

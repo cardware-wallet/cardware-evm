@@ -30,6 +30,9 @@ tiny-keccak = "2.0"
 base64 = "0.13"
 bitcoin = { version="0.32", features=["base64"]}
 bs58 = {version="0.4",features=["check"]}
+ethabi              = "14.0"
+sha3                = "0.10"
+ethers-core         = "2.0.14"
 
 #This dependancy is just for testing and isn't needed for build outs and stops wasm-pack build
 #tokio = { version = "1", features = ["full"]}

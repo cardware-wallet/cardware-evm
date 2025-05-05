@@ -7,6 +7,12 @@ export class Wallet {
   send(to: string, value: string, fee_rate: number): string;
   send_eip1559(to: string, value: string, fee_rate: number): string;
   prepare_eip1559(to: string, value: string, max_priority_fee_per_gas: string, max_fee_per_gas: string, gas_limit: string, data: string): string;
+  prepare_permit2(full_calldata: string): string;
+  /**
+   * Prepare the full EIP-1559 execute transaction including the signed Permit2.
+   * Returns `<rlp_payload_hex>:&<base64(tx_digest||derivation)>`.
+   */
+  prepareEip1559Execute(to: string, value: string, max_priority_fee_per_gas: string, max_fee_per_gas: string, gas_limit: string, full_calldata: string, permit_signature_b64: string): string;
   /**
    * Reconstruct & broadcast a signed EIP-1559 tx from `<hex-rlp>` + base64 signature.
    */
