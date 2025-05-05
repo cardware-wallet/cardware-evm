@@ -13,8 +13,6 @@ use tiny_keccak::Keccak;
 use tiny_keccak::Hasher;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
-use ethers_core::abi::{AbiParser, Function, Token};
-use sha3::{Digest, Keccak256};
 
 #[wasm_bindgen]
 pub struct Wallet{
@@ -941,7 +939,7 @@ impl Wallet {
         let recovery_id = if v_raw > 1 { v_raw - 27 } else { v_raw };
         let v_calc = chain_id.low_u64() * 2 + 35 + recovery_id as u64;
 
-        let v_field = if is_eip1559 {
+        if is_eip1559 {
             U256::from(recovery_id as u64)
         } else {
             U256::from(chain_id.low_u64() * 2 + 35 + recovery_id as u64)
