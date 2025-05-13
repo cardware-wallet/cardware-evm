@@ -234,35 +234,35 @@ impl Wallet {
         format!("{}:&{}", unsigned_hex, blob)
     }
     //Use this to handle complex Smart Contract interactions from Wallet Connect using EIP 1559
-    pub fn prepare_eip1559(&self,to: String,value: String,max_priority_fee_per_gas: String,max_fee_per_gas: String,gas_limit: String,data: String) -> String {
+    pub fn prepare_eip1559(&self, to: String, value: String, max_priority_fee_per_gas: String, max_fee_per_gas: String, gas_limit: String, data: String) -> String {
         // 1) Parse all the hex‐encoded numeric inputs:
         let value_u256 = match U256::from_str_radix(value.trim_start_matches("0x"), 16) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to parse value.".to_string(),
+            Err(_) => return "Error: Failed to parse the value.".to_string(),
         };
         let pri = match U256::from_str_radix(max_priority_fee_per_gas.trim_start_matches("0x"), 16) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to parse max priority fee.".to_string(),
+            Err(_) => return "Error: Failed to parse the max priority fee.".to_string(),
         };
         let fee = match U256::from_str_radix(max_fee_per_gas.trim_start_matches("0x"), 16) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to parse max fee.".to_string(),
+            Err(_) => return "Error: Failed to parse the max fee.".to_string(),
         };
         let gas_limit_u256 = match U256::from_str_radix(gas_limit.trim_start_matches("0x"), 16) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to parse gas limit.".to_string(),
+            Err(_) => return "Error: Failed to parse the gas limit.".to_string(),
         };
 
         // 2) Parse the “to” address
         let to_addr = match Address::from_str(&to) {
             Ok(a) => a,
-            Err(_) => return "Error: Failed to parse recipient address.".to_string(),
+            Err(_) => return "Error: Failed to parse the recipient address.".to_string(),
         };
 
         // 3) Decode the `data` payload
         let data_bytes = match hex::decode(data.trim_start_matches("0x")) {
             Ok(d) => d,
-            Err(_) => return "Error: Failed to decode data field.".to_string(),
+            Err(_) => return "Error: Failed to decode the data field.".to_string(),
         };
 
         // 4) RLP‐encode the EIP-1559 transaction fields:
@@ -295,34 +295,34 @@ impl Wallet {
 
         // 7) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
         let unsigned_hex = hex::encode(&rlp_payload);
-        let b64        = base64::encode(&to_sign);
+        let b64 = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
     }
     //Use this to handle simple transfer functions from Wallet connect using EIP 1559
-    pub fn prepare_eip1559_transfer(&self,to: String,value: String,data: String) -> String {
+    pub fn prepare_eip1559_transfer(&self, to: String, value: String, data: String) -> String {
         // 1) Parse the value
         let value_u256 = match U256::from_str_radix(value.trim_start_matches("0x"), 16) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to parse value.".to_string(),
+            Err(_) => return "Error: Failed to parse the value.".to_string(),
         };
 
         // 2) Parse the “to” address
         let to_addr = match Address::from_str(&to) {
             Ok(a) => a,
-            Err(_) => return "Error: Failed to parse recipient address.".to_string(),
+            Err(_) => return "Error: Failed to parse the recipient address.".to_string(),
         };
 
         // 3) Decode the data payload
         let data_bytes = match hex::decode(data.trim_start_matches("0x")) {
             Ok(d) => d,
-            Err(_) => return "Error: Failed to decode data field.".to_string(),
+            Err(_) => return "Error: Failed to decode the data field.".to_string(),
         };
 
         // 4) Default gas parameters for a standard ERC-20 transfer
         //    ~60 000 gas, 2 Gwei priority tip, 100 Gwei max fee
-        let gas_limit_u256           = U256::from(60_000u64);
+        let gas_limit_u256 = U256::from(60_000u64);
         let max_priority_fee_per_gas = U256::from(2_000_000_000u64);       // 2 Gwei
-        let max_fee_per_gas          = U256::from(100_000_000_000u64);     // 100 Gwei
+        let max_fee_per_gas = U256::from(100_000_000_000u64);     // 100 Gwei
 
         // 5) RLP-encode the EIP-1559 fields:
         //    [ chain_id, nonce, max_priority_fee, max_fee, gas_limit, to, value, data, [] ]
@@ -339,7 +339,7 @@ impl Wallet {
         let rlp_payload = stream.out().to_vec();
 
         // 6) Pre-signing hash: keccak256(0x02 || rlp_payload)
-        let mut hasher    = Keccak::v256();
+        let mut hasher = Keccak::v256();
         hasher.update(&[0x02]);
         hasher.update(&rlp_payload);
         let mut sign_hash = [0u8; 32];
@@ -355,7 +355,7 @@ impl Wallet {
 
         // 8) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
         let unsigned_hex = hex::encode(&rlp_payload);
-        let b64          = base64::encode(&to_sign);
+        let b64 = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
     }
     /// Reconstruct & broadcast a signed EIP-1559 tx from `<hex-rlp>` + base64 signature.
@@ -375,35 +375,35 @@ impl Wallet {
         // 2) extract each field with explicit matches
         let chain_id = match rlp.at(0).and_then(|f| f.as_val::<U256>()) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to decode chain ID.".to_string(),
+            Err(_) => return "Error: Failed to decode the chain ID.".to_string(),
         };
         let nonce = match rlp.at(1).and_then(|f| f.as_val::<U256>()) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to decode nonce.".to_string(),
+            Err(_) => return "Error: Failed to decode the nonce.".to_string(),
         };
         let max_prio = match rlp.at(2).and_then(|f| f.as_val::<U256>()) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to decode max priority fee.".to_string(),
+            Err(_) => return "Error: Failed to decode the max priority fee.".to_string(),
         };
         let max_fee = match rlp.at(3).and_then(|f| f.as_val::<U256>()) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to decode max fee.".to_string(),
+            Err(_) => return "Error: Failed to decode the max fee.".to_string(),
         };
         let gas_limit = match rlp.at(4).and_then(|f| f.as_val::<U256>()) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to decode gas limit.".to_string(),
+            Err(_) => return "Error: Failed to decode the gas limit.".to_string(),
         };
         let to_addr = match rlp.at(5).and_then(|f| f.data().map(|d| d.to_vec())) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to decode to address.".to_string(),
+            Err(_) => return "Error: Failed to decode the to address.".to_string(),
         };
         let value = match rlp.at(6).and_then(|f| f.as_val::<U256>()) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to decode value.".to_string(),
+            Err(_) => return "Error: Failed to decode the value.".to_string(),
         };
         let data_field = match rlp.at(7).and_then(|f| f.data().map(|d| d.to_vec())) {
             Ok(v) => v,
-            Err(_) => return "Error: Failed to decode data field.".to_string(),
+            Err(_) => return "Error: Failed to decode the data field.".to_string(),
         };
         // 8th element is the accessList — we know it was empty, so skip explicit decode
 
@@ -464,7 +464,7 @@ impl Wallet {
                 }
             }
         }
-        "Error: Failed to broadcast transaction.".to_string()
+        return "Error: Failed to broadcast transaction.".to_string()
     }
     pub async fn validate_contract(&mut self, contract_address: String) -> String {
         let url = self.infura_url.clone();

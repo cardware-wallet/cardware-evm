@@ -110,6 +110,76 @@ The output is a string.
 
 ---
 
+## Prepare Transfer (EIP 1559)
+
+This function is used to handle simple transfer functions for Wallet Connect using the EIP 1559 protocol.
+
+### Parameters
+
+| Parameter | Type | Description | Example |
+|---|---|---|---|
+| to | string | The address to send to. | ```"0x37c639c70dbcacd9fbeb18053a4b284cbfca7214"``` |
+| value | string | The send amount with the correct decimals (example uses 18 decimals). | ```100000000000000``` |
+| data | string | | `````` |
+
+### Code
+
+```javascript
+var output = wallet.prepare_eip1559_transfer(to, value, data);
+```
+
+### Output
+
+The output is a string.
+
+| Result | Description | Output |
+|---|---|---|
+| success | The unsigned transaction and the transaction signature seperated by a **:**. | ```"e9088456ff9d048252089437c639c70dbcacd9fbeb18053a4b284cbfca721486b5e620f4800080018080:&OhFNL/DPyiV/bQFnzNyvcQM+FrdBKq0dvM2dzgCdnWcAAAAA"``` |
+| error | The is an issue with parsing the value. | ```"Error: Failed to parse the value."``` |
+| error | The is an issue with parsing the recipient address. | ```"Error: Failed to parse the recipient address."``` |
+| error | The is an issue with decoding the data field. | ```"Error: Failed to decode the data field."``` |
+| error | The is an issue with the derivation path. | ```"Error: Derivation path error."``` |
+
+---
+
+## Prepare (EIP 1559)
+
+This function is used to handle complex smart contract interactions for Wallet Connect using the EIP 1559 protocol.
+
+### Parameters
+
+| Parameter | Type | Description | Example |
+|---|---|---|---|
+| to | string | The address to send to. | ```"0x37c639c70dbcacd9fbeb18053a4b284cbfca7214"``` |
+| value | string | The send amount with the correct decimals (example uses 18 decimals). | ```100000000000000``` |
+| max_priority_fee_per_gas | string |  | ```""``` |
+| max_fee_per_gas | string |  | ```""``` |
+| gas_limit | string |  | ```""``` |
+| data | string |  | ```""``` |
+
+### Code
+
+```javascript
+var output = wallet.prepare_eip1559(to, value, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, data);
+```
+
+### Output
+
+The output is a string.
+
+| Result | Description | Output |
+|---|---|---|
+| success | The unsigned transaction and the transaction signature seperated by a **:**. | ```"e9088456ff9d048252089437c639c70dbcacd9fbeb18053a4b284cbfca721486b5e620f4800080018080:&OhFNL/DPyiV/bQFnzNyvcQM+FrdBKq0dvM2dzgCdnWcAAAAA"``` |
+| error | The is an issue with parsing the value. | ```"Error: Failed to parse the value."``` |
+| error | The is an issue with parsing the max priority fee. | ```"Error: Failed to parse the max priority fee."``` |
+| error | The is an issue with parsing the max fee. | ```"Error: Failed to parse the max fee."``` |
+| error | The is an issue with parsing the gas limit. | ```"Error: Failed to parse the gas limit."``` |
+| error | The is an issue with parsing the recipient address. | ```"Error: Failed to parse the recipient address."``` |
+| error | The is an issue with decoding the data field. | ```"Error: Failed to decode the data field."``` |
+| error | The is an issue with the derivation path. | ```"Error: Derivation path error."``` |
+
+---
+
 ## Send
 
 This function creates an unsigned transaction and a transaction signature. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
@@ -141,7 +211,7 @@ The output is a string.
 
 ## Send (ERC20)
 
-This function creates an unsigned transaction and a transaction signature. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
+This function creates an unsigned transaction and a transaction signature for sending ERC20 tokens. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
 
 ### Parameters
 
@@ -165,6 +235,36 @@ The output is a string.
 | Result | Description | Output |
 |---|---|---|
 | success | The unsigned transaction and the transaction signature seperated by a **:**. | ```"f86909844ec2c75a8302710094a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4880b844a9059cbb00000000000000000000000037c639c70dbcacd9fbeb18053a4b284cbfca721400000000000000000000000000000000000000000000000000000000000f4240018080:&I0yEfDC9g6yH+6o63rVsWq7MQPqPVPAYEYZZ/nCl8N4AAAAA"``` |
+| error | The is an issue with the derivation path. | ```"Error: Derivation path error."``` |
+
+---
+
+## Send (EIP 1559)
+
+This function creates an unsigned transaction and a transaction signature for sending using the EIP 1559 protocol. It puts splits it up into chunks to be put converted into QR codes. At the beginning of the chunk extra information is added. The extra information has the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction*.
+
+### Parameters
+
+| Parameter | Type | Description | Example |
+|---|---|---|---|
+| to | string | The address to send to. | ```"0x02A8665a18BBa2D1B4766e2D71977A781b97592e"``` |
+| value | string | The send amount with the correct decimals (example uses 6 decimals). | ```544000000000``` |
+| fee_rate | int32 | The rate which decides the tx fee. 0 is slow, 1 is medium and 2 is fast. | ```2``` |
+
+### Code
+
+```javascript
+var result = wallet.send_eip1559(to, value, fee_rate);
+```
+
+### Output
+
+The output is a string.
+
+| Result | Description | Output |
+|---|---|---|
+| success | The unsigned transaction and the transaction signature seperated by a **:**. | ```"f86909844ec2c75a8302710094a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4880b844a9059cbb00000000000000000000000037c639c70dbcacd9fbeb18053a4b284cbfca721400000000000000000000000000000000000000000000000000000000000f4240018080:&I0yEfDC9g6yH+6o63rVsWq7MQPqPVPAYEYZZ/nCl8N4AAAAA"``` |
+| error | The is an issue with the value. | ```"Error: Failed to parse value."``` |
 | error | The is an issue with the derivation path. | ```"Error: Derivation path error."``` |
 
 ---
@@ -193,16 +293,55 @@ The output is a string.
 | Result | Description | Output |
 |---|---|---|
 | success | The transaction ID of the broadcasted transaction. | ```"0x6172b61aba8b0c336d5184b6f84d645cf7e232ce164da0820358f211910668ed"``` |
-| error | There is an issue decoding the unsigned transaction. | ```"Error: Failed to decode the unsigned transaction."```
-| error | There is an issue decoding the transaction signature. | ```"Error: Failed to decode the transaction signature."```
-| error | There is an issue decoding the nonce. | ```"Error: Failed to decode the nonce."```
-| error | There is an issue decoding the gas price. | ```"Error: Failed to decode the gas price."```
-| error | There is an issue decoding the gas limit. | ```"Error: Failed to decode the gas limit."```
-| error | There is an issue decoding the output. | ```"Error: Failed to decode the output."```
-| error | There is an issue decoding the value. | ```"Error: Failed to decode the value."```
-| error | There is an issue decoding the field. | ```"Error: Failed to decode the data field."```
-| error | There is an issue decoding the chain ID. | ```"Error: Failed to decode the chain ID."```
-| error | There is an issue broadcasting the transaction. | ```"Error: Failed to broadcast transaction."```
+| error | There is an issue decoding the unsigned transaction. | ```"Error: Failed to decode the unsigned transaction."``` |
+| error | There is an issue decoding the transaction signature. | ```"Error: Failed to decode the transaction signature."``` |
+| error | There is an issue decoding the nonce. | ```"Error: Failed to decode the nonce."``` |
+| error | There is an issue decoding the gas price. | ```"Error: Failed to decode the gas price."``` |
+| error | There is an issue decoding the gas limit. | ```"Error: Failed to decode the gas limit."``` |
+| error | There is an issue decoding the output. | ```"Error: Failed to decode the output."``` |
+| error | There is an issue decoding the value. | ```"Error: Failed to decode the value."``` |
+| error | There is an issue decoding the field. | ```"Error: Failed to decode the data field."``` |
+| error | There is an issue decoding the chain ID. | ```"Error: Failed to decode the chain ID."``` |
+| error | There is an issue broadcasting the transaction. | ```"Error: Failed to broadcast transaction."``` |
+
+---
+
+## Broadcast (EIP 1559)
+
+This function needs an unsigned transaction and a transaction signature to broadcast using the EIP 1559 protocol. It gets this by scanning the QR codes on the Cardware device. When scanning the QR codes of the signed transaction from the Cardware device it follows the format of *(* + *index of QR code* + */* + *total QR codes* + *)* + *the unsigned transaction + the transaction signature*.
+
+### Parameters
+
+| Parameter | Type | Description | Example |
+|---|---|---|---|
+| unsigned_tx | string | The unsigned transaction in base64 that needs to be broadcasted. | ```"ec01088427a87b4c8427a87b4c8252089402a8665a18bba2d1b4766e2d71977a781b97592e857ea8ed400080c0"``` |
+| tx_signature | string | The transaction signature in base64 that needs to be broadcasted. | ```"laNUujpNpeEJaSKo+L7njNYeLFGE1bwVkPdOEpVLGM7RYl41FOuKsZsruIJkzp/JuJ4I+OBweMcUAwnV8sL3hBLQlSpKFIhg1A06Eqxs="``` |
+
+### Code
+
+```javascript
+await wallet.broadcast_eip1559(unsigned_tx, tx_signature);
+```
+
+### Output
+
+The output is a string.
+
+| Result | Description | Output |
+|---|---|---|
+| success | The transaction ID of the broadcasted transaction. | ```"0x6172b61aba8b0c336d5184b6f84d645cf7e232ce164da0820358f211910668ed"``` |
+| error | There is an issue decoding the unsigned transaction. | ```"Error: Failed to decode the unsigned transaction."```  |
+| error | There is an issue decoding the chain ID. | ```"Error: Failed to decode the chain ID."``` |
+| error | There is an issue decoding the nonce. | ```"Error: Failed to decode the nonce."``` |
+| error | There is an issue decoding the max priority fee. | ```"Error: Failed to decode the max priority fee."``` |
+| error | There is an issue decoding the max fee. | ```"Error: Failed to decode the max fee."``` |
+| error | There is an issue decoding the gas limit fee. | ```"Error: Failed to decode the gas limit."``` |
+| error | There is an issue decoding the to address. | ```"Error: Failed to decode the to address."``` |
+| error | There is an issue decoding the value. | ```"Error: Failed to decode the value."``` |
+| error | There is an issue decoding the field. | ```"Error: Failed to decode the data field."``` |
+| error | There is an issue decoding the transaction signature. | ```"Error: Failed to decode the transaction signature."``` |
+| error | There is an issue with the transaction signature length. | ```"Error: Signature length is invalid."``` |
+| error | There is an issue broadcasting the transaction. | ```"Error: Failed to broadcast transaction."``` |
 
 ---
 
@@ -233,7 +372,7 @@ The output is a string.
 
 ## Balance
 
-This function returns confirmed balance of your Cardware device.
+This function returns the confirmed balance of your Cardware device.
 
 ### Parameters
 
@@ -256,7 +395,7 @@ The output is a string.
 
 ## Balance (ERC20)
 
-This function returns confirmed balance of a list of ERC20 tokens for your Cardware device.
+This function returns the confirmed balance of a list of ERC20 tokens for your Cardware device.
 
 ### Parameters
 
@@ -310,4 +449,50 @@ The output is a string.
 | error | There is an issue decoding the symbol. | ```"Error: Failed to decode symbol."``` |
 | error | There is an issue decoding the name. | ```"Error: Failed to decode name."``` |
 
+---
+
+## Get Nonce
+
+This function returns the nonce.
+
+### Parameters
+
+No parameters.
+
+### Code
+
+```javascript
+const result = wallet.get_nonce();
+```
+
+### Output
+
+The output is an u64 int.
+
+| Result | Description | Output |
+|---|---|---|
+| success | The nonce of your wallet. | ```1``` |
+---
+
+## Get Chain ID
+
+This function returns the chain ID your wallet is using.
+
+### Parameters
+
+No parameters.
+
+### Code
+
+```javascript
+const result = wallet.get_chain_id();
+```
+
+### Output
+
+The output is an u64 int.
+
+| Result | Description | Output |
+|---|---|---|
+| success | The chain ID of your wallet is using. | ```1``` |
 ---
