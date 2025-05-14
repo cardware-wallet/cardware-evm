@@ -298,6 +298,98 @@ impl Wallet {
         let b64 = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
     }
+    pub fn prepare_eip1559_new(
+        &self,
+        to: String,
+        value: String,
+        max_priority_fee_per_gas: String,
+        max_fee_per_gas: String,
+        gas_limit: String,
+        data: String,
+    ) -> String {
+        // 1) Parse the value
+        let value_u256 = match U256::from_str_radix(value.trim_start_matches("0x"), 16) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to parse the value.".to_string(),
+        };
+
+        // 2) Parse the “to” address
+        let to_addr = match Address::from_str(&to) {
+            Ok(a) => a,
+            Err(_) => return "Error: Failed to parse the recipient address.".to_string(),
+        };
+
+        // 3) Decode the data payload
+        let data_bytes = match hex::decode(data.trim_start_matches("0x")) {
+            Ok(d) => d,
+            Err(_) => return "Error: Failed to decode the data field.".to_string(),
+        };
+
+        // 4) Determine each gas parameter, defaulting individually if empty:
+        //    - max_priority_fee_per_gas: default 2 Gwei
+        //    - max_fee_per_gas:         default 100 Gwei
+        //    - gas_limit:              default 60 000
+        let pri = if max_priority_fee_per_gas.trim().is_empty() {
+            U256::from(2_000_000_000u64)
+        } else {
+            match U256::from_str_radix(max_priority_fee_per_gas.trim_start_matches("0x"), 16) {
+                Ok(v) => v,
+                Err(_) => return "Error: Failed to parse the max priority fee.".to_string(),
+            }
+        };
+
+        let fee = if max_fee_per_gas.trim().is_empty() {
+            U256::from(100_000_000_000u64)
+        } else {
+            match U256::from_str_radix(max_fee_per_gas.trim_start_matches("0x"), 16) {
+                Ok(v) => v,
+                Err(_) => return "Error: Failed to parse the max fee.".to_string(),
+            }
+        };
+
+        let gas_limit_u256 = if gas_limit.trim().is_empty() {
+            U256::from(60_000u64)
+        } else {
+            match U256::from_str_radix(gas_limit.trim_start_matches("0x"), 16) {
+                Ok(v) => v,
+                Err(_) => return "Error: Failed to parse the gas limit.".to_string(),
+            }
+        };
+
+        // 5) RLP‐encode the EIP-1559 fields:
+        //    [ chain_id, nonce, pri, fee, gas_limit, to, value, data, [] ]
+        let mut stream = RlpStream::new_list(9);
+        stream.append(&U256::from(self.chain_id));
+        stream.append(&U256::from(self.nonce));
+        stream.append(&pri);
+        stream.append(&fee);
+        stream.append(&gas_limit_u256);
+        stream.append(&to_addr);
+        stream.append(&value_u256);
+        stream.append(&data_bytes);
+        stream.begin_list(0);
+        let rlp_payload = stream.out().to_vec();
+
+        // 6) Pre-signing hash: keccak256(0x02 || rlp_payload)
+        let mut hasher    = Keccak::v256();
+        hasher.update(&[0x02]);
+        hasher.update(&rlp_payload);
+        let mut sign_hash = [0u8; 32];
+        hasher.finalize(&mut sign_hash);
+
+        // 7) Append derivation path bytes for the HW
+        let mut to_sign = sign_hash.to_vec();
+        if let Err(_) = extract_u16s(&self.account_derivation_path)
+            .map(|(h1, h2)| append_integers_as_bytes(&mut to_sign, h1, h2))
+        {
+            return "Error: Derivation path error.".to_string();
+        }
+
+        // 8) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
+        let unsigned_hex = hex::encode(&rlp_payload);
+        let b64          = base64::encode(&to_sign);
+        format!("{}:&{}", unsigned_hex, b64)
+    }
     //Use this to handle simple transfer functions from Wallet connect using EIP 1559
     pub fn prepare_eip1559_transfer(&self, to: String, value: String, data: String) -> String {
         // 1) Parse the value

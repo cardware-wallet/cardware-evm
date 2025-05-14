@@ -7,6 +7,7 @@ export const wallet_sync: (a: number) => any;
 export const wallet_send: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
 export const wallet_send_eip1559: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
 export const wallet_prepare_eip1559: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number];
+export const wallet_prepare_eip1559_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number];
 export const wallet_prepare_eip1559_transfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const wallet_broadcast_eip1559: (a: number, b: number, c: number, d: number, e: number) => any;
 export const wallet_validate_contract: (a: number, b: number, c: number) => any;

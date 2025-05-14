@@ -219,7 +219,7 @@ function __wbg_adapter_30(arg0, arg1, arg2) {
     wasm.closure161_externref_shim(arg0, arg1, arg2);
 }
 
-function __wbg_adapter_112(arg0, arg1, arg2, arg3) {
+function __wbg_adapter_113(arg0, arg1, arg2, arg3) {
     wasm.closure212_externref_shim(arg0, arg1, arg2, arg3);
 }
 
@@ -339,6 +339,39 @@ export class Wallet {
             const ptr5 = passStringToWasm0(data, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len5 = WASM_VECTOR_LEN;
             const ret = wasm.wallet_prepare_eip1559(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5);
+            deferred7_0 = ret[0];
+            deferred7_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred7_0, deferred7_1, 1);
+        }
+    }
+    /**
+     * @param {string} to
+     * @param {string} value
+     * @param {string} max_priority_fee_per_gas
+     * @param {string} max_fee_per_gas
+     * @param {string} gas_limit
+     * @param {string} data
+     * @returns {string}
+     */
+    prepare_eip1559_new(to, value, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, data) {
+        let deferred7_0;
+        let deferred7_1;
+        try {
+            const ptr0 = passStringToWasm0(to, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(max_priority_fee_per_gas, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(max_fee_per_gas, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(gas_limit, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(data, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ret = wasm.wallet_prepare_eip1559_new(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5);
             deferred7_0 = ret[0];
             deferred7_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -642,7 +675,7 @@ export function __wbg_new_23a2665fac83c611(arg0, arg1) {
             const a = state0.a;
             state0.a = 0;
             try {
-                return __wbg_adapter_112(a, state0.b, arg0, arg1);
+                return __wbg_adapter_113(a, state0.b, arg0, arg1);
             } finally {
                 state0.a = a;
             }
@@ -818,7 +851,7 @@ export function __wbindgen_cb_drop(arg0) {
     return ret;
 };
 
-export function __wbindgen_closure_wrapper539(arg0, arg1, arg2) {
+export function __wbindgen_closure_wrapper541(arg0, arg1, arg2) {
     const ret = makeMutClosure(arg0, arg1, 162, __wbg_adapter_30);
     return ret;
 };
