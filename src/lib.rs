@@ -298,19 +298,15 @@ impl Wallet {
         let b64 = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
     }
-    pub fn prepare_eip1559_new(
-        &self,
-        to: String,
-        value: String,
-        max_priority_fee_per_gas: String,
-        max_fee_per_gas: String,
-        gas_limit: String,
-        data: String,
-    ) -> String {
+    pub fn prepare_eip1559_new(&self, to: String, value: String, max_priority_fee_per_gas: String, max_fee_per_gas: String, gas_limit: String, data: String) -> String {
         // 1) Parse the value
-        let value_u256 = match U256::from_str_radix(value.trim_start_matches("0x"), 16) {
-            Ok(v) => v,
-            Err(_) => return "Error: Failed to parse the value.".to_string(),
+        let value_u256 = if value.trim().is_empty() {
+            U256::zero()
+        } else {
+            match U256::from_str_radix(value.trim_start_matches("0x"), 16) {
+                Ok(v) => v,
+                Err(_) => return "Error: Failed to parse the value.".to_string(),
+            }
         };
 
         // 2) Parse the “to” address
@@ -330,7 +326,7 @@ impl Wallet {
         //    - max_fee_per_gas:         default 100 Gwei
         //    - gas_limit:              default 60 000
         let pri = if max_priority_fee_per_gas.trim().is_empty() {
-            U256::from(2_000_000_000u64)
+            U256::from(2_000_000_000u64) 
         } else {
             match U256::from_str_radix(max_priority_fee_per_gas.trim_start_matches("0x"), 16) {
                 Ok(v) => v,
@@ -339,7 +335,7 @@ impl Wallet {
         };
 
         let fee = if max_fee_per_gas.trim().is_empty() {
-            U256::from(100_000_000_000u64)
+            gas_price_from_string(&self.gas_price) * U256::from(2)
         } else {
             match U256::from_str_radix(max_fee_per_gas.trim_start_matches("0x"), 16) {
                 Ok(v) => v,
@@ -355,7 +351,14 @@ impl Wallet {
                 Err(_) => return "Error: Failed to parse the gas limit.".to_string(),
             }
         };
-
+        println!("Data Dump =============================");
+        println!("{:?}",pri);
+        println!("{:?}",fee);
+        println!("{:?}",gas_limit_u256);
+        println!("{:?}",to_addr);
+        println!("{:?}",value_u256);
+        println!("{:?}",data_bytes);
+        println!("gas price {:?}",self.gas_price);
         // 5) RLP‐encode the EIP-1559 fields:
         //    [ chain_id, nonce, pri, fee, gas_limit, to, value, data, [] ]
         let mut stream = RlpStream::new_list(9);
