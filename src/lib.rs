@@ -335,7 +335,7 @@ impl Wallet {
         };
 
         let fee = if max_fee_per_gas.trim().is_empty() {
-            gas_price_from_string(&self.gas_price) * U256::from(2)
+            gas_price_from_string(&self.gas_price) * U256::from(2) + pri
         } else {
             match U256::from_str_radix(max_fee_per_gas.trim_start_matches("0x"), 16) {
                 Ok(v) => v,
