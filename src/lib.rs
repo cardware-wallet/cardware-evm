@@ -29,6 +29,7 @@ pub struct Wallet{
     eth_balance : f64,
     balance: String,
     gas_price: String,
+    max_priority_fee_per_gas : String,
 }
 
 #[wasm_bindgen]
@@ -45,6 +46,7 @@ impl Wallet {
             eth_balance: 0.0,
             balance: "0".to_string(),
             gas_price: "0".to_string(),
+            max_priority_fee_per_gas: "0".to_string(),
         }
     }
     pub async fn sync(&mut self) -> String {
@@ -71,6 +73,12 @@ impl Wallet {
                 "method": "eth_gasPrice",
                 "params": [],
                 "id": 3,
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_maxPriorityFeePerGas",
+                "params": [],
+                "id": 4,
             }
         ]);
 
@@ -124,6 +132,14 @@ impl Wallet {
                         };
                         self.gas_price = gas_price_to_string(gas_price);
                     },
+                    4 => {
+                        // eth_maxPriorityFeePerGas
+                        let mpf = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                            Ok(v) => v,
+                            Err(_) => return "Error: Priority fee parse error.".to_string(),
+                        };
+                        self.max_priority_fee_per_gas = gas_price_to_string(mpf);
+                    }
                     _ => {}
                 }
             }
@@ -266,7 +282,7 @@ impl Wallet {
         //    - max_fee_per_gas:         default 100 Gwei
         //    - gas_limit:              default 60 000
         let pri = if max_priority_fee_per_gas.trim().is_empty() {
-            U256::from(2_000_000_000u64) 
+            U256::from(2_500_000_000u64) 
         } else {
             match U256::from_str_radix(max_priority_fee_per_gas.trim_start_matches("0x"), 16) {
                 Ok(v) => v,
@@ -579,6 +595,7 @@ impl Wallet {
         if let Ok(resp) = client.post(&self.infura_url).json(&body).send().await {
             if let Ok(j) = resp.json::<serde_json::Value>().await {
                 if let Some(r) = j.get("result").and_then(|r| r.as_str()) {
+                    self.nonce = self.nonce + 1;
                     return r.to_string();
                 }
                 if let Some(e) = j.get("error") {
@@ -933,6 +950,7 @@ impl Wallet {
         if let Ok(response) = resp {
             if let Ok(resp_json) = response.json::<serde_json::Value>().await {
                 if let Some(result) = resp_json.get("result").and_then(|r| r.as_str()) {
+                    self.nonce = self.nonce + 1;
                     return result.to_string();
                 } else if let Some(error) = resp_json.get("error") {
                     return format!("Error: {:?}", error);

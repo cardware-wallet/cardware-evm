@@ -9,6 +9,7 @@ async fn main() {
     println!("Address: {:?}",wal.address());
     let res = wal.sync().await;
     println!("Res? {:?}",res);
+    
     println!("Eth balance: {:?}",wal.balance());
     let res = wal.send_eip1559("0x02A8665a18BBa2D1B4766e2D71977A781b97592e".to_string(),"544000000000",1);
     println!("RES: {:?}",res);
