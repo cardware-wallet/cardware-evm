@@ -8,6 +8,7 @@ export const wallet_send: (a: number, b: number, c: number, d: number, e: number
 export const wallet_send_eip1559: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
 export const wallet_prepare_eip1559: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number];
 export const wallet_prepare_eip1559_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number];
+export const wallet_prepare_sign_typed_data_v4: (a: number, b: number, c: number) => [number, number];
 export const wallet_prepare_eip1559_transfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const wallet_broadcast_eip1559: (a: number, b: number, c: number, d: number, e: number) => any;
 export const wallet_validate_contract: (a: number, b: number, c: number) => any;
@@ -33,6 +34,6 @@ export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_export_5: WebAssembly.Table;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
-export const closure167_externref_shim: (a: number, b: number, c: any) => void;
-export const closure218_externref_shim: (a: number, b: number, c: any, d: any) => void;
+export const closure226_externref_shim: (a: number, b: number, c: any) => void;
+export const closure268_externref_shim: (a: number, b: number, c: any, d: any) => void;
 export const __wbindgen_start: () => void;

@@ -8,6 +8,7 @@ export class Wallet {
   send_eip1559(to: string, value: string, fee_rate: number): string;
   prepare_eip1559(to: string, value: string, max_priority_fee_per_gas: string, max_fee_per_gas: string, gas_limit: string, data: string): string;
   prepare_eip1559_new(to: string, value: string, max_priority_fee_per_gas: string, max_fee_per_gas: string, gas_limit: string, data: string): string;
+  prepare_sign_typed_data_v4(typed_data_json: string): string;
   prepare_eip1559_transfer(to: string, value: string, data: string): string;
   /**
    * Reconstruct & broadcast a signed EIP-1559 tx from `<hex-rlp>` + base64 signature.

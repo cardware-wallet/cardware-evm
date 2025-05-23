@@ -13,6 +13,10 @@ use tiny_keccak::Keccak;
 use tiny_keccak::Hasher;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
+use ethers_core::{
+    types::transaction::eip712::{TypedData, Eip712},
+    utils::keccak256,
+};
 
 #[wasm_bindgen]
 pub struct Wallet{
@@ -392,6 +396,34 @@ impl Wallet {
         let unsigned_hex = hex::encode(&rlp_payload);
         let b64          = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
+    }
+    
+    pub fn prepare_sign_typed_data_v4(&self, typed_data_json: String) -> String {
+        // 1) Parse the incoming JSON into a TypedData struct
+        let typed: TypedData = match serde_json::from_str(&typed_data_json) {
+            Ok(td) => td,
+            Err(_) => return "Error: Failed to parse typed data JSON.".to_string(),
+        };
+
+        // 2) Encode per EIP-712 and compute the 32-byte digest
+        let encoded = match typed.encode_eip712() {
+            Ok(bytes) => bytes,
+            Err(_) => return "Error: Failed to encode EIP-712 payload.".to_string(),
+        };
+        let digest: [u8; 32] = keccak256(&encoded);
+
+        // 3) Prepare the buffer to send to the hardware wallet: [digest || derivation path bytes]
+        let mut to_sign = digest.to_vec();
+        if let Err(_) = extract_u16s(&self.account_derivation_path)
+            .map(|(h1, h2)| append_integers_as_bytes(&mut to_sign, h1, h2))
+        {
+            return "Error: Derivation path error.".to_string();
+        }
+
+        // 4) Return: hex-encoded payload (for reference) + “:&” + base64(digest‖derivation)
+        let payload_hex = hex::encode(&encoded);
+        let b64         = base64::encode(&to_sign);
+        format!("{}:&{}", payload_hex, b64)
     }
     //Use this to handle simple transfer functions from Wallet connect using EIP 1559
     pub fn prepare_eip1559_transfer(&self, to: String, value: String, data: String) -> String {
