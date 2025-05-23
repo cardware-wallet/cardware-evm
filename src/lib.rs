@@ -239,70 +239,6 @@ impl Wallet {
     }
     //Use this to handle complex Smart Contract interactions from Wallet Connect using EIP 1559
     pub fn prepare_eip1559(&self, to: String, value: String, max_priority_fee_per_gas: String, max_fee_per_gas: String, gas_limit: String, data: String) -> String {
-        // 1) Parse all the hex‐encoded numeric inputs:
-        let value_u256 = match U256::from_str_radix(value.trim_start_matches("0x"), 16) {
-            Ok(v) => v,
-            Err(_) => return "Error: Failed to parse the value.".to_string(),
-        };
-        let pri = match U256::from_str_radix(max_priority_fee_per_gas.trim_start_matches("0x"), 16) {
-            Ok(v) => v,
-            Err(_) => return "Error: Failed to parse the max priority fee.".to_string(),
-        };
-        let fee = match U256::from_str_radix(max_fee_per_gas.trim_start_matches("0x"), 16) {
-            Ok(v) => v,
-            Err(_) => return "Error: Failed to parse the max fee.".to_string(),
-        };
-        let gas_limit_u256 = match U256::from_str_radix(gas_limit.trim_start_matches("0x"), 16) {
-            Ok(v) => v,
-            Err(_) => return "Error: Failed to parse the gas limit.".to_string(),
-        };
-
-        // 2) Parse the “to” address
-        let to_addr = match Address::from_str(&to) {
-            Ok(a) => a,
-            Err(_) => return "Error: Failed to parse the recipient address.".to_string(),
-        };
-
-        // 3) Decode the `data` payload
-        let data_bytes = match hex::decode(data.trim_start_matches("0x")) {
-            Ok(d) => d,
-            Err(_) => return "Error: Failed to decode the data field.".to_string(),
-        };
-
-        // 4) RLP‐encode the EIP-1559 transaction fields:
-        //    [ chain_id, nonce, pri, fee, gas_limit, to, value, data, [] ]
-        let mut stream = RlpStream::new_list(9);
-        stream.append(&U256::from(self.chain_id));
-        stream.append(&U256::from(self.nonce));
-        stream.append(&pri);
-        stream.append(&fee);
-        stream.append(&gas_limit_u256);
-        stream.append(&to_addr);
-        stream.append(&value_u256);
-        stream.append(&data_bytes);
-        stream.begin_list(0);
-        let rlp_payload = stream.out().to_vec();
-
-        // 5) Compute the pre-signing hash: keccak256(0x02 || rlp_payload)
-        let mut hasher = Keccak::v256();
-        hasher.update(&[0x02]);
-        hasher.update(&rlp_payload);
-        let mut sign_hash = [0u8; 32];
-        hasher.finalize(&mut sign_hash);
-
-        // 6) Append derivation path bytes so the HW can pick the right key
-        let mut to_sign = sign_hash.to_vec();
-        match extract_u16s(&self.account_derivation_path) {
-            Ok((h1, h2)) => append_integers_as_bytes(&mut to_sign, h1, h2),
-            Err(_)      => return "Error: Derivation path error.".to_string(),
-        }
-
-        // 7) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
-        let unsigned_hex = hex::encode(&rlp_payload);
-        let b64 = base64::encode(&to_sign);
-        format!("{}:&{}", unsigned_hex, b64)
-    }
-    pub fn prepare_eip1559_new(&self, to: String, value: String, max_priority_fee_per_gas: String, max_fee_per_gas: String, gas_limit: String, data: String) -> String {
         // 1) Parse the value
         let value_u256 = if value.trim().is_empty() {
             U256::zero()
@@ -455,6 +391,34 @@ impl Wallet {
         out.push(v);
 
         format!("0x{}", hex::encode(out))
+    }
+    pub fn prepare_personal_sign(&self, message_hex: String) -> String {
+        // Decode the user-supplied hex message:
+        let msg = match hex::decode(message_hex.trim_start_matches("0x")) {
+            Ok(b) => b,
+            Err(_) => return "Error: Failed to decode message hex.".to_string(),
+        };
+
+        // Build the EIP-191 prefix
+        let prefix = format!("\x19Ethereum Signed Message:\n{}", msg.len());
+        let mut to_hash = prefix.into_bytes();
+        to_hash.extend(&msg);
+
+        // Hash it
+        let digest = keccak256(&to_hash);
+
+        // Append derivation path bytes
+        let mut to_sign = digest.to_vec();
+        if let Err(_) = extract_u16s(&self.account_derivation_path)
+            .map(|(h1, h2)| append_integers_as_bytes(&mut to_sign, h1, h2))
+        {
+            return "Error: Derivation path error.".to_string();
+        }
+
+        // Format "{hex(digest)}:&{base64(digest||derivation)}"
+        let payload_hex = hex::encode(&digest);
+        let b64 = base64::encode(&to_sign);
+        format!("{}:&{}", payload_hex, b64)
     }
     //Use this to handle simple transfer functions from Wallet connect using EIP 1559
     pub fn prepare_eip1559_transfer(&self, to: String, value: String, data: String) -> String {
