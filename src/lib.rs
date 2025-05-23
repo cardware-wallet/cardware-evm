@@ -399,30 +399,33 @@ impl Wallet {
     }
     //EIP 712 methods
     pub fn prepare_sign_typed_data_v4(&self, typed_data_json: String) -> String {
-        // 1) Parse the incoming JSON into a TypedData struct
+        // 1) Parse into TypedData
         let typed: TypedData = match serde_json::from_str(&typed_data_json) {
             Ok(td) => td,
-            Err(_) => return "Error: Failed to parse typed data JSON.".to_string(),
+            Err(_) => return "Error: Failed to parse typed data JSON.".into(),
         };
 
-        // 2) Encode per EIP-712 and compute the 32-byte digest
-        let encoded = match typed.encode_eip712() {
-            Ok(bytes) => bytes,
-            Err(_) => return "Error: Failed to encode EIP-712 payload.".to_string(),
+        // 2) Compute the digest (this is already keccak256(0x19||domain||message))
+        let digest: [u8; 32] = match typed.encode_eip712() {
+            Ok(d) => d,
+            Err(_) => return "Error: Failed to encode EIP-712 payload.".into(),
         };
-        let digest: [u8; 32] = keccak256(&encoded);
 
-        // 3) Prepare the buffer to send to the hardware wallet: [digest || derivation path bytes]
+        // 3) Build the to-sign buffer: [ digest || derivation bytes ]
         let mut to_sign = digest.to_vec();
         if let Err(_) = extract_u16s(&self.account_derivation_path)
             .map(|(h1, h2)| append_integers_as_bytes(&mut to_sign, h1, h2))
         {
-            return "Error: Derivation path error.".to_string();
+            return "Error: Derivation path error.".into();
         }
 
-        // 4) Return: hex-encoded payload (for reference) + “:&” + base64(digest‖derivation)
-        let payload_hex = hex::encode(&encoded);
-        let b64         = base64::encode(&to_sign);
+        // 4) (Optional) hex-encode the digest so you can correlate on the client
+        let payload_hex = hex::encode(&digest);
+
+        // 5) Base64 the digest+derivation for your device
+        let b64 = base64::encode(&to_sign);
+
+        // 6) Return exactly as before: "{hex-digest}:&{base64(digest||derivation)}"
         format!("{}:&{}", payload_hex, b64)
     }
     pub fn signature_hex_from_b64(&self, tx_signature_b64: String) -> String {
