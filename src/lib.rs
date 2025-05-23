@@ -397,7 +397,7 @@ impl Wallet {
         let b64          = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
     }
-    
+    //EIP 712 methods
     pub fn prepare_sign_typed_data_v4(&self, typed_data_json: String) -> String {
         // 1) Parse the incoming JSON into a TypedData struct
         let typed: TypedData = match serde_json::from_str(&typed_data_json) {
@@ -424,6 +424,34 @@ impl Wallet {
         let payload_hex = hex::encode(&encoded);
         let b64         = base64::encode(&to_sign);
         format!("{}:&{}", payload_hex, b64)
+    }
+    pub fn signature_hex_from_b64(&self, tx_signature_b64: String) -> String {
+        // 1) Decode base64
+        let sig = match base64::decode(&tx_signature_b64) {
+            Ok(b) => b,
+            Err(_) => return "Error: Failed to decode the signature.".to_string(),
+        };
+
+        // 2) Must be at least 65 bytes (r(32)+s(32)+v(1))
+        if sig.len() < 65 {
+            return "Error: Signature blob is too short.".to_string();
+        }
+
+        // 3) Split r, s, v
+        let r = &sig[..32];
+        let s = &sig[32..64];
+        let v_raw = sig[64];
+
+        // 4) Normalize v to 27/28 if your device returned 0/1
+        let v = if v_raw <= 1 { v_raw + 27 } else { v_raw };
+
+        // 5) Reassemble and hex‐encode
+        let mut out = Vec::with_capacity(65);
+        out.extend_from_slice(r);
+        out.extend_from_slice(s);
+        out.push(v);
+
+        format!("0x{}", hex::encode(out))
     }
     //Use this to handle simple transfer functions from Wallet connect using EIP 1559
     pub fn prepare_eip1559_transfer(&self, to: String, value: String, data: String) -> String {

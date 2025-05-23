@@ -219,7 +219,7 @@ function __wbg_adapter_30(arg0, arg1, arg2) {
     wasm.closure226_externref_shim(arg0, arg1, arg2);
 }
 
-function __wbg_adapter_114(arg0, arg1, arg2, arg3) {
+function __wbg_adapter_115(arg0, arg1, arg2, arg3) {
     wasm.closure268_externref_shim(arg0, arg1, arg2, arg3);
 }
 
@@ -390,6 +390,24 @@ export class Wallet {
             const ptr0 = passStringToWasm0(typed_data_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len0 = WASM_VECTOR_LEN;
             const ret = wasm.wallet_prepare_sign_typed_data_v4(this.__wbg_ptr, ptr0, len0);
+            deferred2_0 = ret[0];
+            deferred2_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * @param {string} tx_signature_b64
+     * @returns {string}
+     */
+    signature_hex_from_b64(tx_signature_b64) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ptr0 = passStringToWasm0(tx_signature_b64, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.wallet_signature_hex_from_b64(this.__wbg_ptr, ptr0, len0);
             deferred2_0 = ret[0];
             deferred2_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -693,7 +711,7 @@ export function __wbg_new_23a2665fac83c611(arg0, arg1) {
             const a = state0.a;
             state0.a = 0;
             try {
-                return __wbg_adapter_114(a, state0.b, arg0, arg1);
+                return __wbg_adapter_115(a, state0.b, arg0, arg1);
             } finally {
                 state0.a = a;
             }
@@ -869,7 +887,7 @@ export function __wbindgen_cb_drop(arg0) {
     return ret;
 };
 
-export function __wbindgen_closure_wrapper841(arg0, arg1, arg2) {
+export function __wbindgen_closure_wrapper843(arg0, arg1, arg2) {
     const ret = makeMutClosure(arg0, arg1, 227, __wbg_adapter_30);
     return ret;
 };
