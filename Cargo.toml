@@ -1,6 +1,6 @@
 [package]
 name = "cardware-evm"
-version = "1.0.5"
+version = "1.0.6"
 edition = "2021"
 license = "GPL-3.0-only"
 description = "The official EVM library for interacting with a Cardware device through web."
