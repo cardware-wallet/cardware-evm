@@ -13,6 +13,10 @@ use tiny_keccak::Keccak;
 use tiny_keccak::Hasher;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
+use ethers_core::{
+    types::transaction::eip712::{TypedData, Eip712},
+    utils::keccak256,
+};
 
 #[wasm_bindgen]
 pub struct Wallet{
@@ -25,6 +29,7 @@ pub struct Wallet{
     eth_balance : f64,
     balance: String,
     gas_price: String,
+    max_priority_fee_per_gas : String,
 }
 
 #[wasm_bindgen]
@@ -41,6 +46,7 @@ impl Wallet {
             eth_balance: 0.0,
             balance: "0".to_string(),
             gas_price: "0".to_string(),
+            max_priority_fee_per_gas: "0".to_string(),
         }
     }
     pub async fn sync(&mut self) -> String {
@@ -67,6 +73,12 @@ impl Wallet {
                 "method": "eth_gasPrice",
                 "params": [],
                 "id": 3,
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_maxPriorityFeePerGas",
+                "params": [],
+                "id": 4,
             }
         ]);
 
@@ -120,6 +132,14 @@ impl Wallet {
                         };
                         self.gas_price = gas_price_to_string(gas_price);
                     },
+                    4 => {
+                        // eth_maxPriorityFeePerGas
+                        let mpf = match U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                            Ok(v) => v,
+                            Err(_) => return "Error: Priority fee parse error.".to_string(),
+                        };
+                        self.max_priority_fee_per_gas = gas_price_to_string(mpf);
+                    }
                     _ => {}
                 }
             }
@@ -235,70 +255,6 @@ impl Wallet {
     }
     //Use this to handle complex Smart Contract interactions from Wallet Connect using EIP 1559
     pub fn prepare_eip1559(&self, to: String, value: String, max_priority_fee_per_gas: String, max_fee_per_gas: String, gas_limit: String, data: String) -> String {
-        // 1) Parse all the hex‐encoded numeric inputs:
-        let value_u256 = match U256::from_str_radix(value.trim_start_matches("0x"), 16) {
-            Ok(v) => v,
-            Err(_) => return "Error: Failed to parse the value.".to_string(),
-        };
-        let pri = match U256::from_str_radix(max_priority_fee_per_gas.trim_start_matches("0x"), 16) {
-            Ok(v) => v,
-            Err(_) => return "Error: Failed to parse the max priority fee.".to_string(),
-        };
-        let fee = match U256::from_str_radix(max_fee_per_gas.trim_start_matches("0x"), 16) {
-            Ok(v) => v,
-            Err(_) => return "Error: Failed to parse the max fee.".to_string(),
-        };
-        let gas_limit_u256 = match U256::from_str_radix(gas_limit.trim_start_matches("0x"), 16) {
-            Ok(v) => v,
-            Err(_) => return "Error: Failed to parse the gas limit.".to_string(),
-        };
-
-        // 2) Parse the “to” address
-        let to_addr = match Address::from_str(&to) {
-            Ok(a) => a,
-            Err(_) => return "Error: Failed to parse the recipient address.".to_string(),
-        };
-
-        // 3) Decode the `data` payload
-        let data_bytes = match hex::decode(data.trim_start_matches("0x")) {
-            Ok(d) => d,
-            Err(_) => return "Error: Failed to decode the data field.".to_string(),
-        };
-
-        // 4) RLP‐encode the EIP-1559 transaction fields:
-        //    [ chain_id, nonce, pri, fee, gas_limit, to, value, data, [] ]
-        let mut stream = RlpStream::new_list(9);
-        stream.append(&U256::from(self.chain_id));
-        stream.append(&U256::from(self.nonce));
-        stream.append(&pri);
-        stream.append(&fee);
-        stream.append(&gas_limit_u256);
-        stream.append(&to_addr);
-        stream.append(&value_u256);
-        stream.append(&data_bytes);
-        stream.begin_list(0);
-        let rlp_payload = stream.out().to_vec();
-
-        // 5) Compute the pre-signing hash: keccak256(0x02 || rlp_payload)
-        let mut hasher = Keccak::v256();
-        hasher.update(&[0x02]);
-        hasher.update(&rlp_payload);
-        let mut sign_hash = [0u8; 32];
-        hasher.finalize(&mut sign_hash);
-
-        // 6) Append derivation path bytes so the HW can pick the right key
-        let mut to_sign = sign_hash.to_vec();
-        match extract_u16s(&self.account_derivation_path) {
-            Ok((h1, h2)) => append_integers_as_bytes(&mut to_sign, h1, h2),
-            Err(_)      => return "Error: Derivation path error.".to_string(),
-        }
-
-        // 7) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
-        let unsigned_hex = hex::encode(&rlp_payload);
-        let b64 = base64::encode(&to_sign);
-        format!("{}:&{}", unsigned_hex, b64)
-    }
-    pub fn prepare_eip1559_new(&self, to: String, value: String, max_priority_fee_per_gas: String, max_fee_per_gas: String, gas_limit: String, data: String) -> String {
         // 1) Parse the value
         let value_u256 = if value.trim().is_empty() {
             U256::zero()
@@ -326,7 +282,7 @@ impl Wallet {
         //    - max_fee_per_gas:         default 100 Gwei
         //    - gas_limit:              default 60 000
         let pri = if max_priority_fee_per_gas.trim().is_empty() {
-            U256::from(2_000_000_000u64) 
+            U256::from(2_500_000_000u64) 
         } else {
             match U256::from_str_radix(max_priority_fee_per_gas.trim_start_matches("0x"), 16) {
                 Ok(v) => v,
@@ -392,6 +348,93 @@ impl Wallet {
         let unsigned_hex = hex::encode(&rlp_payload);
         let b64          = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
+    }
+    //EIP 712 methods
+    pub fn prepare_sign_typed_data_v4(&self, typed_data_json: String) -> String {
+        // 1) Parse into TypedData
+        let typed: TypedData = match serde_json::from_str(&typed_data_json) {
+            Ok(td) => td,
+            Err(_) => return "Error: Failed to parse typed data JSON.".into(),
+        };
+
+        // 2) Compute the digest (this is already keccak256(0x19||domain||message))
+        let digest: [u8; 32] = match typed.encode_eip712() {
+            Ok(d) => d,
+            Err(_) => return "Error: Failed to encode EIP-712 payload.".into(),
+        };
+
+        // 3) Build the to-sign buffer: [ digest || derivation bytes ]
+        let mut to_sign = digest.to_vec();
+        if let Err(_) = extract_u16s(&self.account_derivation_path)
+            .map(|(h1, h2)| append_integers_as_bytes(&mut to_sign, h1, h2))
+        {
+            return "Error: Derivation path error.".into();
+        }
+
+        // 4) (Optional) hex-encode the digest so you can correlate on the client
+        let payload_hex = hex::encode(&digest);
+
+        // 5) Base64 the digest+derivation for your device
+        let b64 = base64::encode(&to_sign);
+
+        // 6) Return exactly as before: "{hex-digest}:&{base64(digest||derivation)}"
+        format!("{}:&{}", payload_hex, b64)
+    }
+    pub fn signature_hex_from_b64(&self, tx_signature_b64: String) -> String {
+        // 1) Decode base64
+        let sig = match base64::decode(&tx_signature_b64) {
+            Ok(b) => b,
+            Err(_) => return "Error: Failed to decode the signature.".to_string(),
+        };
+
+        // 2) Must be at least 65 bytes (r(32)+s(32)+v(1))
+        if sig.len() < 65 {
+            return "Error: Signature blob is too short.".to_string();
+        }
+
+        // 3) Split r, s, v
+        let r = &sig[..32];
+        let s = &sig[32..64];
+        let v_raw = sig[64];
+
+        // 4) Normalize v to 27/28 if your device returned 0/1
+        let v = if v_raw <= 1 { v_raw + 27 } else { v_raw };
+
+        // 5) Reassemble and hex‐encode
+        let mut out = Vec::with_capacity(65);
+        out.extend_from_slice(r);
+        out.extend_from_slice(s);
+        out.push(v);
+
+        format!("0x{}", hex::encode(out))
+    }
+    pub fn prepare_personal_sign(&self, message_hex: String) -> String {
+        // Decode the user-supplied hex message:
+        let msg = match hex::decode(message_hex.trim_start_matches("0x")) {
+            Ok(b) => b,
+            Err(_) => return "Error: Failed to decode message hex.".to_string(),
+        };
+
+        // Build the EIP-191 prefix
+        let prefix = format!("\x19Ethereum Signed Message:\n{}", msg.len());
+        let mut to_hash = prefix.into_bytes();
+        to_hash.extend(&msg);
+
+        // Hash it
+        let digest = keccak256(&to_hash);
+
+        // Append derivation path bytes
+        let mut to_sign = digest.to_vec();
+        if let Err(_) = extract_u16s(&self.account_derivation_path)
+            .map(|(h1, h2)| append_integers_as_bytes(&mut to_sign, h1, h2))
+        {
+            return "Error: Derivation path error.".to_string();
+        }
+
+        // Format "{hex(digest)}:&{base64(digest||derivation)}"
+        let payload_hex = hex::encode(&digest);
+        let b64 = base64::encode(&to_sign);
+        format!("{}:&{}", payload_hex, b64)
     }
     //Use this to handle simple transfer functions from Wallet connect using EIP 1559
     pub fn prepare_eip1559_transfer(&self, to: String, value: String, data: String) -> String {
@@ -552,6 +595,7 @@ impl Wallet {
         if let Ok(resp) = client.post(&self.infura_url).json(&body).send().await {
             if let Ok(j) = resp.json::<serde_json::Value>().await {
                 if let Some(r) = j.get("result").and_then(|r| r.as_str()) {
+                    self.nonce = self.nonce + 1;
                     return r.to_string();
                 }
                 if let Some(e) = j.get("error") {
@@ -906,6 +950,7 @@ impl Wallet {
         if let Ok(response) = resp {
             if let Ok(resp_json) = response.json::<serde_json::Value>().await {
                 if let Some(result) = resp_json.get("result").and_then(|r| r.as_str()) {
+                    self.nonce = self.nonce + 1;
                     return result.to_string();
                 } else if let Some(error) = resp_json.get("error") {
                     return format!("Error: {:?}", error);

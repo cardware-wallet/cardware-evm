@@ -31,6 +31,7 @@ base64 = "0.13"
 bitcoin = { version="0.32", features=["base64"]}
 bs58 = {version="0.4",features=["check"]}
 ethabi              = "14.0"
+ethers-core = { version = "2.0.14", default-features = false, features = ["eip712"] }
 
 #This dependancy is just for testing and isn't needed for build outs and stops wasm-pack build
 #tokio = { version = "1", features = ["full"]}
