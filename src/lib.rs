@@ -30,6 +30,7 @@ pub struct Wallet{
     balance: String,
     gas_price: String,
     max_priority_fee_per_gas : String,
+    etherscan_api_key: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -47,6 +48,7 @@ impl Wallet {
             balance: "0".to_string(),
             gas_price: "0".to_string(),
             max_priority_fee_per_gas: "0".to_string(),
+            etherscan_api_key: None,
         }
     }
     pub async fn sync(&mut self) -> String {
@@ -265,7 +267,7 @@ impl Wallet {
             }
         };
 
-        // 2) Parse the “to” address
+        // 2) Parse the "to" address
         let to_addr = match Address::from_str(&to) {
             Ok(a) => a,
             Err(_) => return "Error: Failed to parse the recipient address.".to_string(),
@@ -315,7 +317,7 @@ impl Wallet {
         println!("{:?}",value_u256);
         println!("{:?}",data_bytes);
         println!("gas price {:?}",self.gas_price);
-        // 5) RLP‐encode the EIP-1559 fields:
+        // 5) RLP-encode the EIP-1559 fields:
         //    [ chain_id, nonce, pri, fee, gas_limit, to, value, data, [] ]
         let mut stream = RlpStream::new_list(9);
         stream.append(&U256::from(self.chain_id));
@@ -344,7 +346,7 @@ impl Wallet {
             return "Error: Derivation path error.".to_string();
         }
 
-        // 8) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
+        // 8) Return "unsignedRlpHex:&base64(sign_hash||derivation)"
         let unsigned_hex = hex::encode(&rlp_payload);
         let b64          = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
@@ -400,7 +402,7 @@ impl Wallet {
         // 4) Normalize v to 27/28 if your device returned 0/1
         let v = if v_raw <= 1 { v_raw + 27 } else { v_raw };
 
-        // 5) Reassemble and hex‐encode
+        // 5) Reassemble and hex-encode
         let mut out = Vec::with_capacity(65);
         out.extend_from_slice(r);
         out.extend_from_slice(s);
@@ -444,7 +446,7 @@ impl Wallet {
             Err(_) => return "Error: Failed to parse the value.".to_string(),
         };
 
-        // 2) Parse the “to” address
+        // 2) Parse the "to" address
         let to_addr = match Address::from_str(&to) {
             Ok(a) => a,
             Err(_) => return "Error: Failed to parse the recipient address.".to_string(),
@@ -491,7 +493,7 @@ impl Wallet {
             return "Error: Derivation path error.".to_string();
         }
 
-        // 8) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
+        // 8) Return "unsignedRlpHex:&base64(sign_hash||derivation)"
         let unsigned_hex = hex::encode(&rlp_payload);
         let b64 = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
@@ -504,7 +506,7 @@ impl Wallet {
             Ok(b) => b,
             Err(_) => return "Error: Failed to decode the unsigned transaction.".to_string(),
         };
-        // if it starts with the type‐2 marker, strip it off:
+        // if it starts with the type-2 marker, strip it off:
         if raw.first() == Some(&0x02) {
             raw = raw[1..].to_vec();
         }
@@ -569,7 +571,7 @@ impl Wallet {
         stre.append(&value);
         stre.append(&data_field);
         stre.begin_list(0);               // empty accessList
-        stre.append(&U256::from(rec_id));
+        stre.append_raw(&[rec_id], 1);
         stre.append(&r_sig);
         stre.append(&s_sig);
         let signed_rlp = stre.out().to_vec();
@@ -583,7 +585,7 @@ impl Wallet {
         //let raw_hex = format!("0x{}", hex::encode(raw_tx));
         // 👉 DEBUG: print (or even return) the fully signed RLP so you can inspect it
         //println!("DEBUG signed_raw_tx: {}", raw_hex);
-        //return raw_hex;   // <— you can early‐return here for testing
+        //return raw_hex;   // <— you can early-return here for testing
         // 6) broadcast
         let client = Client::new();
         let body = json!({
@@ -971,7 +973,7 @@ impl Wallet {
         let is_eip1559 = tx_bytes.get(0).map(|b| *b == 0x02).unwrap_or(false);
         if is_eip1559 {
             // drop the 0x02 tag
-            tx_bytes = tx_bytes.split_off(1);
+            tx_bytes = tx_bytes[1..].to_vec();
         }
 
         // 3. RLP-decode
@@ -1185,6 +1187,221 @@ impl Wallet {
     pub fn nonce(&self) -> u64 {
         self.nonce
     }
+
+    /// Set the Etherscan API key for alternative data fetching
+    pub fn set_etherscan_api_key(&mut self, api_key: String) {
+        self.etherscan_api_key = Some(api_key);
+    }
+
+    /// Get transaction count (nonce) from Etherscan API
+    pub async fn get_nonce_from_etherscan(&self) -> Result<u64, String> {
+        let api_key = self.etherscan_api_key.as_ref().ok_or("Error: Etherscan API key not set.")?;
+        if self.address.is_empty() { return Err("Error: Call address() first.".to_string()); }
+        
+        let url = format!("https://api.etherscan.io/v2/api?chainid={}&module=proxy&action=eth_getTransactionCount&address={}&tag=latest&apikey={}", 
+            self.chain_id, self.address, api_key);
+        
+        let response = reqwest::Client::new().get(&url).send().await.map_err(|_| "API request failed")?;
+        let body = response.text().await.map_err(|_| "Failed to read response")?;
+        let json: Value = serde_json::from_str(&body).map_err(|_| "JSON parse error")?;
+        let nonce_hex = json.get("result").and_then(|r| r.as_str()).ok_or("Invalid response")?;
+        
+        U256::from_str_radix(nonce_hex.trim_start_matches("0x"), 16)
+            .map(|v| v.low_u64())
+            .map_err(|_| "Nonce parse error".to_string())
+    }
+
+    /// Sync wallet data with option to use Etherscan for nonce
+    pub async fn sync_with_etherscan(&mut self, use_etherscan_for_nonce: bool) -> String {
+        // Get nonce from Etherscan if requested
+        if use_etherscan_for_nonce {
+            self.nonce = match self.get_nonce_from_etherscan().await {
+                Ok(nonce) => nonce,
+                Err(e) => return format!("Error: {}", e),
+            };
+        }
+
+        let addr = self.address();
+        
+        // Build static request based on option
+        let request_body = if use_etherscan_for_nonce {
+            json!([
+                {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [addr, "latest"], "id": 1},
+                {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 2},
+                {"jsonrpc": "2.0", "method": "eth_maxPriorityFeePerGas", "params": [], "id": 3}
+            ])
+        } else {
+            json!([
+                {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [addr, "latest"], "id": 1},
+                {"jsonrpc": "2.0", "method": "eth_getTransactionCount", "params": [addr, "latest"], "id": 2},
+                {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 3},
+                {"jsonrpc": "2.0", "method": "eth_maxPriorityFeePerGas", "params": [], "id": 4}
+            ])
+        };
+
+        // Make request to Infura
+        let response = match reqwest::Client::new().post(&self.infura_url)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&request_body)
+            .send().await {
+                Ok(resp) => resp,
+                Err(_) => return "Error: Infura error".to_string(),
+            };
+
+        let body = match response.text().await {
+            Ok(text) => text,
+            Err(_) => return "Error: Response read error".to_string(),
+        };
+
+        let parsed: Value = match serde_json::from_str(&body) {
+            Ok(val) => val,
+            Err(_) => return "Error: JSON parse error".to_string(),
+        };
+
+        let responses = match parsed.as_array() {
+            Some(arr) => arr,
+            None => return "Error: Invalid response format".to_string(),
+        };
+
+        // Process responses directly
+        for resp in responses {
+            let id = resp.get("id").and_then(|i| i.as_i64()).unwrap_or(0);
+            let result = match resp.get("result").and_then(|r| r.as_str()) {
+                Some(r) => r,
+                None => continue,
+            };
+
+            match id {
+                1 => { // Balance
+                    if let Ok(balance) = U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                        self.balance = gas_price_to_string(balance);
+                        self.eth_balance = wei_to_eth(balance);
+                    }
+                },
+                2 => { // Nonce (only if not using Etherscan)
+                    if !use_etherscan_for_nonce {
+                        if let Ok(nonce) = U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                            self.nonce = nonce.low_u64();
+                        }
+                    }
+                },
+                3 | 4 => { // Gas prices
+                    if let Ok(gas) = U256::from_str_radix(result.trim_start_matches("0x"), 16) {
+                        if id == 3 || (id == 4 && use_etherscan_for_nonce) {
+                            self.gas_price = gas.to_string();
+                        } else {
+                            self.max_priority_fee_per_gas = gas.to_string();
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+        
+        "Sync successful.".to_string()
+    }
+
+    /// Get transaction history from Etherscan API
+    pub async fn get_transaction_history(&self, limit: Option<u32>) -> String {
+        let api_key = match &self.etherscan_api_key {
+            Some(key) => key,
+            None => return "Error: Etherscan API key not set.".to_string(),
+        };
+        
+        if self.address.is_empty() {
+            return "Error: Call address() first.".to_string();
+        }
+
+        let url = format!("https://api.etherscan.io/v2/api?chainid={}&module=account&action=txlist&address={}&sort=desc&offset={}&apikey={}", 
+            self.chain_id, self.address, limit.unwrap_or(10), api_key);
+
+        let response = match reqwest::Client::new().get(&url).send().await {
+            Ok(resp) => resp,
+            Err(_) => return "Error: API request failed".to_string(),
+        };
+        
+        let body = match response.text().await {
+            Ok(text) => text,
+            Err(_) => return "Error: Failed to read response".to_string(),
+        };
+        
+        let json: Value = match serde_json::from_str(&body) {
+            Ok(val) => val,
+            Err(_) => return "Error: JSON parse error".to_string(),
+        };
+
+        if json.get("status").and_then(|s| s.as_str()) != Some("1") {
+            let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return format!("Error: {}", msg);
+        }
+        
+        match json.get("result") {
+            Some(result) => result.to_string(),
+            None => "[]".to_string(),
+        }
+    }
+
+    /// Get simplified transaction history  
+    pub async fn get_simple_transaction_history(&self, limit: Option<u32>) -> String {
+        let api_key = match &self.etherscan_api_key {
+            Some(key) => key,
+            None => return "Error: Etherscan API key not set.".to_string(),
+        };
+        
+        if self.address.is_empty() {
+            return "Error: Call address() first.".to_string();
+        }
+
+        let url = format!("https://api.etherscan.io/v2/api?chainid={}&module=account&action=txlist&address={}&sort=desc&offset={}&apikey={}", 
+            self.chain_id, self.address, limit.unwrap_or(5), api_key);
+
+        let response = match reqwest::Client::new().get(&url).send().await {
+            Ok(resp) => resp,
+            Err(_) => return "Error: API request failed".to_string(),
+        };
+        
+        let body = match response.text().await {
+            Ok(text) => text,
+            Err(_) => return "Error: Failed to read response".to_string(),
+        };
+        
+        let json: Value = match serde_json::from_str(&body) {
+            Ok(val) => val,
+            Err(_) => return "Error: JSON parse error".to_string(),
+        };
+
+        if json.get("status").and_then(|s| s.as_str()) != Some("1") {
+            let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return format!("Error: {}", msg);
+        }
+        
+        let txs = match json.get("result").and_then(|r| r.as_array()) {
+            Some(arr) => arr,
+            None => return "[]".to_string(),
+        };
+
+        // Process transactions directly
+        let mut simplified = Vec::new();
+        for tx in txs {
+            let from = tx.get("from").and_then(|f| f.as_str()).unwrap_or("N/A");
+            let value_wei = tx.get("value").and_then(|v| v.as_str()).unwrap_or("0");
+            let value_eth = U256::from_dec_str(value_wei).map(wei_to_eth).unwrap_or(0.0);
+            let direction = if from.to_lowercase() == self.address.to_lowercase() { "sent" } else { "received" };
+            
+            simplified.push(json!({
+                "hash": tx.get("hash").and_then(|h| h.as_str()).unwrap_or("N/A"),
+                "direction": direction,
+                "from": from,
+                "to": tx.get("to").and_then(|t| t.as_str()).unwrap_or("N/A"),
+                "value_eth": value_eth,
+                "value_wei": value_wei,
+                "timestamp": tx.get("timeStamp").and_then(|ts| ts.as_str()).unwrap_or("0"),
+                "block_number": tx.get("blockNumber").and_then(|bn| bn.as_str()).unwrap_or("0")
+            }));
+        }
+        
+        json!(simplified).to_string()
+    }
 }
 
 pub fn convert_to_xpub(xpub_str : String) -> String{
@@ -1200,6 +1417,7 @@ pub fn convert_to_xpub(xpub_str : String) -> String{
     }
     return bs58::encode(vec).with_check().into_string();
 }
+
 fn gas_price_to_string(gas_price: U256) -> String {
     return gas_price.to_string();
 }
