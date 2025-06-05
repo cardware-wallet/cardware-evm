@@ -78,7 +78,7 @@ async fn main() {
     
     // Test 4: Get full transaction history (raw data)
     println!("\n=== Test 4: Getting full transaction history (first 3) ===");
-    let full_history = wal.get_transaction_history(None, None, None, Some(3)).await;
+    let full_history = wal.get_transaction_history(Some(3)).await;
     
     if full_history.starts_with("Error:") {
         println!("✗ Full transaction history error: {}", full_history);
