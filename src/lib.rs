@@ -585,7 +585,7 @@ impl Wallet {
         //let raw_hex = format!("0x{}", hex::encode(raw_tx));
         // 👉 DEBUG: print (or even return) the fully signed RLP so you can inspect it
         //println!("DEBUG signed_raw_tx: {}", raw_hex);
-        //return raw_hex;   // <— you can early-return here for testing
+        //return raw_hex;   // <— you can early‐return here for testing
         // 6) broadcast
         let client = Client::new();
         let body = json!({
@@ -973,7 +973,7 @@ impl Wallet {
         let is_eip1559 = tx_bytes.get(0).map(|b| *b == 0x02).unwrap_or(false);
         if is_eip1559 {
             // drop the 0x02 tag
-            tx_bytes = tx_bytes[1..].to_vec();
+            tx_bytes = tx_bytes.split_off(1);
         }
 
         // 3. RLP-decode
