@@ -46,39 +46,4 @@ async fn main() {
                                       "148v8u32WP1MW3JOk/Iz1OOKMZ8jLO4An1jcfGzx7AksGQtP+dm8lw6Zri94txhV+gQEeMrnvleImffPG1wQkRs=".to_string());
     println!("reso {:?}",res3);
     */
-    
-    // NEW: Transaction History Testing (Etherscan API with hardcoded key)
-    println!("\n=== TESTING NEW TRANSACTION HISTORY FEATURES ===");
-    
-    // Test 1: Get nonce from Etherscan
-    println!("Testing Etherscan nonce...");
-    match wal.get_nonce_from_etherscan().await {
-        Ok(nonce) => println!("Etherscan nonce: {}", nonce),
-        Err(e) => println!("Etherscan nonce error: {}", e),
-    }
-    
-    // Test 2: Sync with Etherscan for nonce comparison
-    println!("Testing hybrid sync (Etherscan for nonce)...");
-    let hybrid_sync = wal.sync_with_etherscan(true).await;
-    println!("Hybrid sync result: {}", hybrid_sync);
-    
-    // Test 3: Get simple transaction history (last 5 transactions)
-    println!("Testing simple transaction history...");
-    let simple_tx = wal.get_simple_transaction_history(Some(5)).await;
-    if simple_tx.len() > 100 {
-        println!("Simple TX History (first 100 chars): {}...", &simple_tx[..100]);
-    } else {
-        println!("Simple TX History: {}", simple_tx);
-    }
-    
-    // Test 4: Get raw transaction history (last 2 transactions)
-    println!("Testing raw transaction history...");
-    let raw_tx = wal.get_transaction_history(Some(2)).await;
-    if raw_tx.len() > 150 {
-        println!("Raw TX History (first 150 chars): {}...", &raw_tx[..150]);
-    } else {
-        println!("Raw TX History: {}", raw_tx);
-    }
-    
-    println!("=== TRANSACTION HISTORY TESTS COMPLETE ===");
 }
