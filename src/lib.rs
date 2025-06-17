@@ -145,9 +145,9 @@ impl Wallet {
                     _ => {}
                 }
             }
-            "Sync successful.".to_string()
+            return "Sync successful.".to_string();
         } else {
-            "Error: Infura error.".to_string()
+            return "Error: Infura error.".to_string();
         }
     }
     //fee rate determines tx fee, 0 = slow, 1 = medium, 2 = fast
@@ -1189,7 +1189,6 @@ impl Wallet {
         self.nonce
     }
 
-    // Helper function for transaction processing
     async fn fetch_transaction_history(&self, limit: u32, simplified: bool) -> String {
         const API_KEY: &str = "KAQABZ3CB12ETJC8QG6WT3DRI2IH95I8I7";
         
