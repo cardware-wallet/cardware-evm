@@ -267,7 +267,7 @@ impl Wallet {
             }
         };
 
-        // 2) Parse the "to" address
+        // 2) Parse the “to” address
         let to_addr = match Address::from_str(&to) {
             Ok(a) => a,
             Err(_) => return "Error: Failed to parse the recipient address.".to_string(),
@@ -317,7 +317,8 @@ impl Wallet {
         println!("{:?}",value_u256);
         println!("{:?}",data_bytes);
         println!("gas price {:?}",self.gas_price);
-        // 5) RLP-encode the EIP-1559 fields:
+
+        // 5) RLP‐encode the EIP-1559 fields:
         //    [ chain_id, nonce, pri, fee, gas_limit, to, value, data, [] ]
         let mut stream = RlpStream::new_list(9);
         stream.append(&U256::from(self.chain_id));
@@ -346,7 +347,7 @@ impl Wallet {
             return "Error: Derivation path error.".to_string();
         }
 
-        // 8) Return "unsignedRlpHex:&base64(sign_hash||derivation)"
+        // 8) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
         let unsigned_hex = hex::encode(&rlp_payload);
         let b64          = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
@@ -401,8 +402,8 @@ impl Wallet {
 
         // 4) Normalize v to 27/28 if your device returned 0/1
         let v = if v_raw <= 1 { v_raw + 27 } else { v_raw };
-
-        // 5) Reassemble and hex-encode
+       
+        // 5) Reassemble and hex‐encode
         let mut out = Vec::with_capacity(65);
         out.extend_from_slice(r);
         out.extend_from_slice(s);
@@ -445,8 +446,7 @@ impl Wallet {
             Ok(v) => v,
             Err(_) => return "Error: Failed to parse the value.".to_string(),
         };
-
-        // 2) Parse the "to" address
+        // 2) Parse the “to” address
         let to_addr = match Address::from_str(&to) {
             Ok(a) => a,
             Err(_) => return "Error: Failed to parse the recipient address.".to_string(),
@@ -492,8 +492,7 @@ impl Wallet {
         {
             return "Error: Derivation path error.".to_string();
         }
-
-        // 8) Return "unsignedRlpHex:&base64(sign_hash||derivation)"
+        // 8) Return “unsignedRlpHex:&base64(sign_hash||derivation)”
         let unsigned_hex = hex::encode(&rlp_payload);
         let b64 = base64::encode(&to_sign);
         format!("{}:&{}", unsigned_hex, b64)
@@ -571,7 +570,7 @@ impl Wallet {
         stre.append(&value);
         stre.append(&data_field);
         stre.begin_list(0);               // empty accessList
-        stre.append_raw(&[rec_id], 1);
+        stre.append(&U256::from(rec_id));
         stre.append(&r_sig);
         stre.append(&s_sig);
         let signed_rlp = stre.out().to_vec();
