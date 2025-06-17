@@ -30,7 +30,7 @@ pub struct Wallet{
     balance: String,
     gas_price: String,
     max_priority_fee_per_gas : String,
-    etherscan_api_key: Option<String>,
+
 }
 
 #[wasm_bindgen]
@@ -48,7 +48,7 @@ impl Wallet {
             balance: "0".to_string(),
             gas_price: "0".to_string(),
             max_priority_fee_per_gas: "0".to_string(),
-            etherscan_api_key: None,
+
         }
     }
     pub async fn sync(&mut self) -> String {
@@ -1188,14 +1188,9 @@ impl Wallet {
         self.nonce
     }
 
-    /// Set the Etherscan API key for alternative data fetching
-    pub fn set_etherscan_api_key(&mut self, api_key: String) {
-        self.etherscan_api_key = Some(api_key);
-    }
-
     /// Get transaction count (nonce) from Etherscan API
     pub async fn get_nonce_from_etherscan(&self) -> Result<u64, String> {
-        let api_key = self.etherscan_api_key.as_ref().ok_or("Error: Etherscan API key not set.")?;
+        let api_key = "KAQABZ3CB12ETJC8QG6WT3DRI2IH95I8I7";
         if self.address.is_empty() { return Err("Error: Call address() first.".to_string()); }
         
         let url = format!("https://api.etherscan.io/v2/api?chainid={}&module=proxy&action=eth_getTransactionCount&address={}&tag=latest&apikey={}", 
@@ -1303,10 +1298,7 @@ impl Wallet {
 
     /// Get transaction history from Etherscan API
     pub async fn get_transaction_history(&self, limit: Option<u32>) -> String {
-        let api_key = match &self.etherscan_api_key {
-            Some(key) => key,
-            None => return "Error: Etherscan API key not set.".to_string(),
-        };
+        let api_key = "KAQABZ3CB12ETJC8QG6WT3DRI2IH95I8I7";
         
         if self.address.is_empty() {
             return "Error: Call address() first.".to_string();
@@ -1343,10 +1335,7 @@ impl Wallet {
 
     /// Get simplified transaction history  
     pub async fn get_simple_transaction_history(&self, limit: Option<u32>) -> String {
-        let api_key = match &self.etherscan_api_key {
-            Some(key) => key,
-            None => return "Error: Etherscan API key not set.".to_string(),
-        };
+        let api_key = "KAQABZ3CB12ETJC8QG6WT3DRI2IH95I8I7";
         
         if self.address.is_empty() {
             return "Error: Call address() first.".to_string();

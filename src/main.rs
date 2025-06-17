@@ -2,113 +2,6 @@ use cardware_evm::Wallet;
 
 #[tokio::main]
 async fn main() {
-    println!("=== Testing Etherscan API Integration ===");
-    
-    // Test Etherscan API with the provided address
-    let _test_address = "0x0122783b377fbd437880334872b85f3ba9a5f99d";
-    let etherscan_api_key = "KAQABZ3CB12ETJC8QG6WT3DRI2IH95I8I7";
-    
-    // Create a dummy wallet for testing (we'll override the address)
-    let mut wal = Wallet::new(
-        "zpub6qhLodRvBBKKmnMHWf3SUgucomzpcR8mRRw9V8sW9sEiLbVDwwN4N5y5tfojPWhKkuxyTtCsuv4W45q9MuxB95iFBVD2mXEyHrkmka1Woxq".to_string(),
-        "m/0/0".to_string(),
-        "https://mainnet.infura.io/v3/498507efe2844f7cb9d8f25dd6e8f92b".to_string(),
-        1
-    );
-    
-    // Set the Etherscan API key
-    wal.set_etherscan_api_key(etherscan_api_key.to_string());
-    println!("✓ Etherscan API key set");
-    
-    // Get the derived address
-    let derived_address = wal.address();
-    println!("Derived address from xpub: {}", derived_address);
-    
-    // Test 1: Get nonce for the derived address using Etherscan
-    println!("\n=== Test 1: Getting nonce for derived address ===");
-    match wal.get_nonce_from_etherscan().await {
-        Ok(nonce) => println!("✓ Nonce from Etherscan: {}", nonce),
-        Err(e) => println!("✗ Failed to get nonce: {}", e),
-    }
-    
-    // Test 2: Sync with Etherscan for nonce
-    println!("\n=== Test 2: Sync wallet using Etherscan for nonce ===");
-    let sync_result = wal.sync_with_etherscan(true).await;
-    println!("Sync result: {}", sync_result);
-    
-    if sync_result == "Sync successful." {
-        println!("✓ Wallet synced successfully!");
-        println!("  - ETH Balance: {}", wal.balance());
-        println!("  - Nonce: {}", wal.get_nonce());
-        println!("  - Chain ID: {}", wal.get_chain_id());
-    }
-    
-    // Test 3: Get transaction history
-    println!("\n=== Test 3: Getting transaction history ===");
-    let tx_history = wal.get_simple_transaction_history(Some(5)).await;
-    
-    if tx_history.starts_with("Error:") {
-        println!("✗ Transaction history error: {}", tx_history);
-    } else if tx_history == "[]" {
-        println!("✓ No transactions found for this address");
-    } else {
-        println!("✓ Transaction history retrieved successfully!");
-        
-        // Parse and display the transactions nicely
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&tx_history) {
-            if let Some(txs) = parsed.as_array() {
-                println!("Found {} recent transactions:", txs.len());
-                
-                for (i, tx) in txs.iter().enumerate() {
-                    let hash = tx.get("hash").and_then(|h| h.as_str()).unwrap_or("N/A");
-                    let direction = tx.get("direction").and_then(|d| d.as_str()).unwrap_or("N/A");
-                    let value_eth = tx.get("value_eth").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                    let from = tx.get("from").and_then(|f| f.as_str()).unwrap_or("N/A");
-                    let to = tx.get("to").and_then(|t| t.as_str()).unwrap_or("N/A");
-                    let block = tx.get("block_number").and_then(|b| b.as_str()).unwrap_or("N/A");
-                    
-                    println!("  {}. {} {} ETH - {} (Block: {})", 
-                        i + 1, direction, value_eth, &hash[..10], block);
-                    println!("     From: {}...", &from[..10]);
-                    println!("     To:   {}...", &to[..10]);
-                }
-            }
-        }
-    }
-    
-    // Test 4: Get full transaction history (raw data)
-    println!("\n=== Test 4: Getting full transaction history (first 3) ===");
-    let full_history = wal.get_transaction_history(Some(3)).await;
-    
-    if full_history.starts_with("Error:") {
-        println!("✗ Full transaction history error: {}", full_history);
-    } else if full_history == "[]" {
-        println!("✓ No transactions found");
-    } else {
-        println!("✓ Full transaction history retrieved successfully!");
-        // Just show first 200 characters to avoid overwhelming output
-        let preview = if full_history.len() > 200 {
-            format!("{}...", &full_history[..200])
-        } else {
-            full_history
-        };
-        println!("Raw data preview: {}", preview);
-    }
-    
-    // Test 5: Compare with regular sync (using Infura for nonce)
-    println!("\n=== Test 5: Compare with regular Infura sync ===");
-    let infura_sync_result = wal.sync().await;
-    println!("Infura sync result: {}", infura_sync_result);
-    
-    if infura_sync_result == "Sync successful." {
-        println!("✓ Infura sync successful!");
-        println!("  - Nonce from Infura: {}", wal.get_nonce());
-    }
-    
-    println!("\n=== Etherscan API Test Complete ===");
-    
-    /*
-    // Original test code (commented out for now)
     println!("Hello, world!");
     let mut wal = Wallet::new("zpub6qhLodRvBBKKmnMHWf3SUgucomzpcR8mRRw9V8sW9sEiLbVDwwN4N5y5tfojPWhKkuxyTtCsuv4W45q9MuxB95iFBVD2mXEyHrkmka1Woxq".to_string(),
                               "m/0/0".to_string(),
@@ -125,7 +18,7 @@ async fn main() {
     println!("EIP712 res: {:?}",res5);
     //estimate fee example:
     //Erc20 Balance
-    
+    /*
     let erc_bal = wal.erc20_balance(["0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
                                       "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()].to_vec()).await;
     println!("erc20 bal: {:?}",erc_bal);
@@ -153,4 +46,39 @@ async fn main() {
                                       "148v8u32WP1MW3JOk/Iz1OOKMZ8jLO4An1jcfGzx7AksGQtP+dm8lw6Zri94txhV+gQEeMrnvleImffPG1wQkRs=".to_string());
     println!("reso {:?}",res3);
     */
+    
+    // NEW: Transaction History Testing (Etherscan API with hardcoded key)
+    println!("\n=== TESTING NEW TRANSACTION HISTORY FEATURES ===");
+    
+    // Test 1: Get nonce from Etherscan
+    println!("Testing Etherscan nonce...");
+    match wal.get_nonce_from_etherscan().await {
+        Ok(nonce) => println!("Etherscan nonce: {}", nonce),
+        Err(e) => println!("Etherscan nonce error: {}", e),
+    }
+    
+    // Test 2: Sync with Etherscan for nonce comparison
+    println!("Testing hybrid sync (Etherscan for nonce)...");
+    let hybrid_sync = wal.sync_with_etherscan(true).await;
+    println!("Hybrid sync result: {}", hybrid_sync);
+    
+    // Test 3: Get simple transaction history (last 5 transactions)
+    println!("Testing simple transaction history...");
+    let simple_tx = wal.get_simple_transaction_history(Some(5)).await;
+    if simple_tx.len() > 100 {
+        println!("Simple TX History (first 100 chars): {}...", &simple_tx[..100]);
+    } else {
+        println!("Simple TX History: {}", simple_tx);
+    }
+    
+    // Test 4: Get raw transaction history (last 2 transactions)
+    println!("Testing raw transaction history...");
+    let raw_tx = wal.get_transaction_history(Some(2)).await;
+    if raw_tx.len() > 150 {
+        println!("Raw TX History (first 150 chars): {}...", &raw_tx[..150]);
+    } else {
+        println!("Raw TX History: {}", raw_tx);
+    }
+    
+    println!("=== TRANSACTION HISTORY TESTS COMPLETE ===");
 }
