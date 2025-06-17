@@ -1299,80 +1299,10 @@ impl Wallet {
         }
     }
 
-    /// Get transaction count (nonce) from Etherscan API
-    pub async fn get_nonce_from_etherscan(&self) -> String {
-        match self.make_etherscan_request("proxy", "eth_getTransactionCount", &[("tag", "latest")]).await {
-            Ok(json) => {
-                let nonce_hex = match json.get("result").and_then(|r| r.as_str()) {
-                    Some(hex) => hex,
-                    None => return "Error: Invalid response format.".to_string(),
-                };
-                match U256::from_str_radix(nonce_hex.trim_start_matches("0x"), 16) {
-                    Ok(nonce) => nonce.low_u64().to_string(),
-                    Err(_) => "Error: Failed to parse nonce.".to_string(),
-                }
-            },
-            Err(e) => e,
-        }
-    }
 
-    /// Sync wallet data with option to use Etherscan for nonce
-    pub async fn sync_with_etherscan(&mut self, use_etherscan_for_nonce: bool) -> String {
-        if use_etherscan_for_nonce {
-            match self.get_nonce_from_etherscan().await {
-                nonce_str if !nonce_str.starts_with("Error:") => {
-                    self.nonce = nonce_str.parse().unwrap_or(0);
-                },
-                error => return error,
-            }
-        }
 
-        let addr = self.address();
-        let request_body = if use_etherscan_for_nonce {
-            json!([
-                {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [addr, "latest"], "id": 1},
-                {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 2},
-                {"jsonrpc": "2.0", "method": "eth_maxPriorityFeePerGas", "params": [], "id": 3}
-            ])
-        } else {
-            json!([
-                {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [addr, "latest"], "id": 1},
-                {"jsonrpc": "2.0", "method": "eth_getTransactionCount", "params": [addr, "latest"], "id": 2},
-                {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 3},
-                {"jsonrpc": "2.0", "method": "eth_maxPriorityFeePerGas", "params": [], "id": 4}
-            ])
-        };
-
-        match self.make_infura_request(request_body).await {
-            Ok(responses) => {
-                for resp in responses.as_array().unwrap_or(&vec![]) {
-                    let id = resp.get("id").and_then(|i| i.as_i64()).unwrap_or(0);
-                    let result = match resp.get("result").and_then(|r| r.as_str()) {
-                        Some(r) => r,
-                        None => continue,
-                    };
-
-                    match id {
-                        1 => self.update_balance(result),
-                        2 if !use_etherscan_for_nonce => self.update_nonce(result),
-                        3 | 4 => self.update_gas_price(result, id, use_etherscan_for_nonce),
-                        _ => {}
-                    }
-                }
-                "Sync successful.".to_string()
-            },
-            Err(e) => e,
-        }
-    }
-
-    /// Get transaction history from Etherscan API
-    pub async fn get_transaction_history(&self, limit: Option<u32>) -> String {
-        self.fetch_transaction_history(limit.unwrap_or(10), false).await
-    }
-
-    /// Get simplified transaction history  
-    pub async fn get_simple_transaction_history(&self, limit: Option<u32>) -> String {
-        self.fetch_transaction_history(limit.unwrap_or(5), true).await
+    pub async fn transactions(&self, limit: Option<u32>) -> String {
+        self.fetch_transaction_history(limit.unwrap_or(10), true).await
     }
 }
 
