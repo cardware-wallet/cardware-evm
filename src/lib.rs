@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use reqwest::Client;
 use serde_json::json;
-use hex;
+
 use rlp::RlpStream;
 use rlp::Rlp;
 use std::str::FromStr;
@@ -145,9 +145,9 @@ impl Wallet {
                     _ => {}
                 }
             }
-            return "Sync successful.".to_string();
+            "Sync successful.".to_string()
         } else {
-            return "Error: Infura error.".to_string();
+            "Error: Infura error.".to_string()
         }
     }
     //fee rate determines tx fee, 0 = slow, 1 = medium, 2 = fast
@@ -1189,113 +1189,64 @@ impl Wallet {
         self.nonce
     }
 
-    // Helper functions for cleaner, more procedural code
-    async fn make_etherscan_request(&self, module: &str, action: &str, params: &[(&str, &str)]) -> Result<Value, String> {
+    // Helper function for transaction processing
+    async fn fetch_transaction_history(&self, limit: u32, simplified: bool) -> String {
         const API_KEY: &str = "KAQABZ3CB12ETJC8QG6WT3DRI2IH95I8I7";
         
         if self.address.is_empty() {
-            return Err("Error: Call address() first.".to_string());
+            return "Error: Call address() first.".to_string();
         }
 
-        let mut url = format!("https://api.etherscan.io/v2/api?chainid={}&module={}&action={}&address={}&apikey={}",
-            self.chain_id, module, action, self.address, API_KEY);
-        
-        for (key, value) in params {
-            url.push_str(&format!("&{}={}", key, value));
-        }
+        let url = format!("https://api.etherscan.io/v2/api?chainid={}&module=account&action=txlist&address={}&sort=desc&offset={}&apikey={}",
+            self.chain_id, self.address, limit, API_KEY);
 
-        let response = reqwest::Client::new().get(&url).send().await
-            .map_err(|_| "Error: API request failed.".to_string())?;
+        let response = match reqwest::Client::new().get(&url).send().await {
+            Ok(resp) => resp,
+            Err(_) => return "Error: API request failed.".to_string(),
+        };
         
-        let body = response.text().await
-            .map_err(|_| "Error: Failed to read response.".to_string())?;
+        let body = match response.text().await {
+            Ok(text) => text,
+            Err(_) => return "Error: Failed to read response.".to_string(),
+        };
         
-        let json: Value = serde_json::from_str(&body)
-            .map_err(|_| "Error: JSON parse error.".to_string())?;
+        let json: Value = match serde_json::from_str(&body) {
+            Ok(val) => val,
+            Err(_) => return "Error: JSON parse error.".to_string(),
+        };
 
         if json.get("status").and_then(|s| s.as_str()) != Some("1") {
             let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(format!("Error: {}", msg));
+            return format!("Error: {}", msg);
         }
 
-        Ok(json)
-    }
+        let txs = match json.get("result").and_then(|r| r.as_array()) {
+            Some(arr) => arr,
+            None => return "[]".to_string(),
+        };
 
-    async fn make_infura_request(&self, request_body: Value) -> Result<Value, String> {
-        let response = reqwest::Client::new()
-            .post(&self.infura_url)
-            .header(CONTENT_TYPE, "application/json")
-            .json(&request_body)
-            .send().await
-            .map_err(|_| "Error: Infura error.".to_string())?;
-
-        let body = response.text().await
-            .map_err(|_| "Error: Response read error.".to_string())?;
-
-        serde_json::from_str(&body)
-            .map_err(|_| "Error: JSON parse error.".to_string())
-    }
-
-    async fn fetch_transaction_history(&self, limit: u32, simplified: bool) -> String {
-        match self.make_etherscan_request("account", "txlist", &[("sort", "desc"), ("offset", &limit.to_string())]).await {
-            Ok(json) => {
-                let txs = match json.get("result").and_then(|r| r.as_array()) {
-                    Some(arr) => arr,
-                    None => return "[]".to_string(),
-                };
-
-                if simplified {
-                    self.process_simple_transactions(txs)
-                } else {
-                    json.get("result").map(|r| r.to_string()).unwrap_or("[]".to_string())
-                }
-            },
-            Err(e) => e,
-        }
-    }
-
-    fn process_simple_transactions(&self, txs: &[Value]) -> String {
-        let simplified: Vec<Value> = txs.iter().map(|tx| {
-            let from = tx.get("from").and_then(|f| f.as_str()).unwrap_or("N/A");
-            let value_wei = tx.get("value").and_then(|v| v.as_str()).unwrap_or("0");
-            let value_eth = U256::from_dec_str(value_wei).map(wei_to_eth).unwrap_or(0.0);
-            let direction = if from.to_lowercase() == self.address.to_lowercase() { "sent" } else { "received" };
+        if simplified {
+            let simplified: Vec<Value> = txs.iter().map(|tx| {
+                let from = tx.get("from").and_then(|f| f.as_str()).unwrap_or("N/A");
+                let value_wei = tx.get("value").and_then(|v| v.as_str()).unwrap_or("0");
+                let value_eth = U256::from_dec_str(value_wei).map(wei_to_eth).unwrap_or(0.0);
+                let direction = if from.to_lowercase() == self.address.to_lowercase() { "sent" } else { "received" };
+                
+                json!({
+                    "hash": tx.get("hash").and_then(|h| h.as_str()).unwrap_or("N/A"),
+                    "direction": direction,
+                    "from": from,
+                    "to": tx.get("to").and_then(|t| t.as_str()).unwrap_or("N/A"),
+                    "value_eth": value_eth,
+                    "value_wei": value_wei,
+                    "timestamp": tx.get("timeStamp").and_then(|ts| ts.as_str()).unwrap_or("0"),
+                    "block_number": tx.get("blockNumber").and_then(|bn| bn.as_str()).unwrap_or("0")
+                })
+            }).collect();
             
-            json!({
-                "hash": tx.get("hash").and_then(|h| h.as_str()).unwrap_or("N/A"),
-                "direction": direction,
-                "from": from,
-                "to": tx.get("to").and_then(|t| t.as_str()).unwrap_or("N/A"),
-                "value_eth": value_eth,
-                "value_wei": value_wei,
-                "timestamp": tx.get("timeStamp").and_then(|ts| ts.as_str()).unwrap_or("0"),
-                "block_number": tx.get("blockNumber").and_then(|bn| bn.as_str()).unwrap_or("0")
-            })
-        }).collect();
-        
-        json!(simplified).to_string()
-    }
-
-    fn update_balance(&mut self, result: &str) {
-        if let Ok(balance) = U256::from_str_radix(result.trim_start_matches("0x"), 16) {
-            self.balance = gas_price_to_string(balance);
-            self.eth_balance = wei_to_eth(balance);
-        }
-    }
-
-    fn update_nonce(&mut self, result: &str) {
-        if let Ok(nonce) = U256::from_str_radix(result.trim_start_matches("0x"), 16) {
-            self.nonce = nonce.low_u64();
-        }
-    }
-
-    fn update_gas_price(&mut self, result: &str, id: i64, use_etherscan_for_nonce: bool) {
-        if let Ok(gas) = U256::from_str_radix(result.trim_start_matches("0x"), 16) {
-            if id == 3 || (id == 4 && use_etherscan_for_nonce) {
-                self.gas_price = gas.to_string();
-            } else {
-                self.max_priority_fee_per_gas = gas.to_string();
-            }
+            json!(simplified).to_string()
+        } else {
+            json.get("result").map(|r| r.to_string()).unwrap_or("[]".to_string())
         }
     }
 
