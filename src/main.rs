@@ -16,12 +16,18 @@ async fn main() {
 
     let res5 = wal.prepare_sign_typed_data_v4("{\"domain\":{\"name\":\"Permit2\",\"chainId\":1,\"verifyingContract\":\"0x31c2f6fcff4f8759b3bd5bf0e1084a055615c768\"},\"message\":{\"details\":{\"token\":\"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48\",\"amount\":\"1461501637330902918203684832716283019655932542975\",\"expiration\":\"1750587227\",\"nonce\":\"0\"},\"spender\":\"0x65b382653f7c31bc0af67f188122035461ec9c76\",\"sigDeadline\":\"1747997027\"},\"primaryType\":\"PermitSingle\",\"types\":{\"EIP712Domain\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"chainId\",\"type\":\"uint256\"},{\"name\":\"verifyingContract\",\"type\":\"address\"}],\"PermitSingle\":[{\"name\":\"details\",\"type\":\"PermitDetails\"},{\"name\":\"spender\",\"type\":\"address\"},{\"name\":\"sigDeadline\",\"type\":\"uint256\"}],\"PermitDetails\":[{\"name\":\"token\",\"type\":\"address\"},{\"name\":\"amount\",\"type\":\"uint160\"},{\"name\":\"expiration\",\"type\":\"uint48\"},{\"name\":\"nonce\",\"type\":\"uint48\"}]}}".to_string());
     println!("EIP712 res: {:?}",res5);
+
+
+    //Transaction History
+    let tx_history = wal.transactions(Some(10)).await;
+    println!("Transaction history: {:?}", tx_history);
     //estimate fee example:
     //Erc20 Balance
     /*
     let erc_bal = wal.erc20_balance(["0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
                                       "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()].to_vec()).await;
     println!("erc20 bal: {:?}",erc_bal);
+
 
     //Broadcast example
     //let res3 = wal.broadcast("ea80850cce4166008252089402a8665a18bba2d1b4766e2d71977a781b97592e857ea8ed40008081928080".to_string(),
