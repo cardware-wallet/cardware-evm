@@ -507,7 +507,7 @@ impl Wallet {
             Ok(b) => b,
             Err(_) => return "Error: Failed to decode the unsigned transaction.".to_string(),
         };
-        // if it starts with the type-2 marker, strip it off:
+        // if it starts with the type‐2 marker, strip it off:
         if raw.first() == Some(&0x02) {
             raw = raw[1..].to_vec();
         }
