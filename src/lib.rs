@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use reqwest::Client;
 use serde_json::json;
+use serde::{Deserialize, Serialize};
 
 use rlp::RlpStream;
 use rlp::Rlp;
@@ -1189,71 +1190,77 @@ impl Wallet {
         self.nonce
     }
 
-    async fn fetch_transaction_history(&self, limit: u32, simplified: bool) -> String {
+    async fn get_transaction_history(&mut self, base_url: &str, limit: u32) -> Result<Vec<EtherscanTx>, String> {
         const API_KEY: &str = "KAQABZ3CB12ETJC8QG6WT3DRI2IH95I8I7";
         
-        if self.address.is_empty() {
-            return "Error: Call address() first.".to_string();
+        let address = self.address();
+        if address.starts_with("Error:") {
+            return Err(address);
         }
 
-        let url = format!("https://api.etherscan.io/v2/api?chainid={}&module=account&action=txlist&address={}&sort=desc&offset={}&apikey={}",
-            self.chain_id, self.address, limit, API_KEY);
+        let url = format!("{}?chainid={}&module=account&action=txlist&address={}&sort=desc&offset={}&apikey={}",
+            base_url, self.chain_id, address, limit, API_KEY);
 
         let response = match reqwest::Client::new().get(&url).send().await {
             Ok(resp) => resp,
-            Err(_) => return "Error: API request failed.".to_string(),
+            Err(_) => return Err("Error: API request failed.".to_string()),
         };
         
         let body = match response.text().await {
             Ok(text) => text,
-            Err(_) => return "Error: Failed to read response.".to_string(),
+            Err(_) => return Err("Error: Failed to read response.".to_string()),
         };
         
         let json: Value = match serde_json::from_str(&body) {
             Ok(val) => val,
-            Err(_) => return "Error: JSON parse error.".to_string(),
+            Err(_) => return Err("Error: JSON parse error.".to_string()),
         };
 
         if json.get("status").and_then(|s| s.as_str()) != Some("1") {
             let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return format!("Error: {}", msg);
+            return Err(format!("Error: {}", msg));
         }
 
         let txs = match json.get("result").and_then(|r| r.as_array()) {
             Some(arr) => arr,
-            None => return "[]".to_string(),
+            None => return Ok(vec![]),
         };
 
-        if simplified {
-            let simplified: Vec<Value> = txs.iter().map(|tx| {
-                let from = tx.get("from").and_then(|f| f.as_str()).unwrap_or("N/A");
-                let value_wei = tx.get("value").and_then(|v| v.as_str()).unwrap_or("0");
-                let value_eth = U256::from_dec_str(value_wei).map(wei_to_eth).unwrap_or(0.0);
-                let direction = if from.to_lowercase() == self.address.to_lowercase() { "sent" } else { "received" };
-                
-                json!({
-                    "hash": tx.get("hash").and_then(|h| h.as_str()).unwrap_or("N/A"),
-                    "direction": direction,
-                    "from": from,
-                    "to": tx.get("to").and_then(|t| t.as_str()).unwrap_or("N/A"),
-                    "value_eth": value_eth,
-                    "value_wei": value_wei,
-                    "timestamp": tx.get("timeStamp").and_then(|ts| ts.as_str()).unwrap_or("0"),
-                    "block_number": tx.get("blockNumber").and_then(|bn| bn.as_str()).unwrap_or("0")
-                })
-            }).collect();
+        let structured_txs: Vec<EtherscanTx> = txs.iter().map(|tx| {
+            let from = tx.get("from").and_then(|f| f.as_str()).unwrap_or("N/A");
+            let value_wei = tx.get("value").and_then(|v| v.as_str()).unwrap_or("0");
+            let value_eth = U256::from_dec_str(value_wei).map(wei_to_eth).unwrap_or(0.0);
+            let direction = if from.to_lowercase() == address.to_lowercase() { "sent" } else { "received" };
             
-            json!(simplified).to_string()
-        } else {
-            json.get("result").map(|r| r.to_string()).unwrap_or("[]".to_string())
+            EtherscanTx {
+                hash: tx.get("hash").and_then(|h| h.as_str()).unwrap_or("N/A").to_string(),
+                direction: direction.to_string(),
+                from_address: from.to_string(),
+                to_address: tx.get("to").and_then(|t| t.as_str()).unwrap_or("N/A").to_string(),
+                value_eth,
+                value_wei: value_wei.to_string(),
+                timestamp: tx.get("timeStamp").and_then(|ts| ts.as_str()).unwrap_or("0").to_string(),
+                block_number: tx.get("blockNumber").and_then(|bn| bn.as_str()).unwrap_or("0").to_string(),
+            }
+        }).collect();
+        
+        Ok(structured_txs)
+    }
+
+
+
+    pub async fn transactions(&mut self, base_url: &str, limit: Option<u32>) -> String {
+        match self.get_transaction_history(base_url, limit.unwrap_or(10)).await {
+            Ok(txs) => {
+                match serde_json::to_string_pretty(&txs) {
+                    Ok(json_str) => json_str,
+                    Err(_) => "Error: Failed to serialize transactions.".to_string(),
+                }
+            },
+            Err(error) => error,
         }
     }
 
-
-
-    pub async fn transactions(&self, limit: Option<u32>) -> String {
-        self.fetch_transaction_history(limit.unwrap_or(10), true).await
-    }
 }
 
 pub fn convert_to_xpub(xpub_str : String) -> String{
@@ -1375,3 +1382,24 @@ pub fn append_integers_as_bytes(vec: &mut Vec<u8>, addressdepth: u16, changedept
     vec.extend_from_slice(&changedepth_bytes);
 }
 
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct EtherscanTx {
+    #[serde(rename = "block_number")]
+    pub block_number: String,
+
+    pub direction: String,
+
+    #[serde(rename = "from")]
+    pub from_address: String,
+
+    pub hash: String,
+
+    pub timestamp: String,
+
+    #[serde(rename = "to")]
+    pub to_address: String,
+
+    pub value_eth: f64,
+    
+    pub value_wei: String,
+}

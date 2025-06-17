@@ -18,9 +18,10 @@ async fn main() {
     println!("EIP712 res: {:?}",res5);
 
 
-    //Transaction History
-    let tx_history = wal.transactions(Some(10)).await;
-    println!("Transaction history: {:?}", tx_history);
+    //Transaction History - Structured and Pretty formatted
+    let tx_history = wal.transactions("https://api.etherscan.io/v2/api", Some(5)).await;
+    println!("📊 Transaction History (first 5 transactions):");
+    println!("{}", tx_history);
     //estimate fee example:
     //Erc20 Balance
     /*
