@@ -31,7 +31,6 @@ pub struct Wallet{
     balance: String,
     gas_price: String,
     max_priority_fee_per_gas : String,
-
 }
 
 #[wasm_bindgen]
@@ -49,7 +48,6 @@ impl Wallet {
             balance: "0".to_string(),
             gas_price: "0".to_string(),
             max_priority_fee_per_gas: "0".to_string(),
-
         }
     }
     pub async fn sync(&mut self) -> String {
@@ -318,7 +316,6 @@ impl Wallet {
         println!("{:?}",value_u256);
         println!("{:?}",data_bytes);
         println!("gas price {:?}",self.gas_price);
-
         // 5) RLP‐encode the EIP-1559 fields:
         //    [ chain_id, nonce, pri, fee, gas_limit, to, value, data, [] ]
         let mut stream = RlpStream::new_list(9);
@@ -400,7 +397,6 @@ impl Wallet {
         let r = &sig[..32];
         let s = &sig[32..64];
         let v_raw = sig[64];
-
         // 4) Normalize v to 27/28 if your device returned 0/1
         let v = if v_raw <= 1 { v_raw + 27 } else { v_raw };
        
@@ -447,7 +443,6 @@ impl Wallet {
             Ok(v) => v,
             Err(_) => return "Error: Failed to parse the value.".to_string(),
         };
-        
         // 2) Parse the “to” address
         let to_addr = match Address::from_str(&to) {
             Ok(a) => a,
@@ -1190,12 +1185,13 @@ impl Wallet {
         self.nonce
     }
 
-    pub async fn get_tx_history(&mut self, base_url: &str, api_key: &str, limit: Option<u32>) -> String {
+    #[wasm_bindgen]
+    pub async fn get_tx_history(&mut self, base_url: &str, api_key: &str, limit: u32) -> String {
         let address = self.address();
         if address.starts_with("Error") { return address; }
 
         let url = format!("{}?chainid={}&module=account&action=txlist&address={}&sort=desc&offset={}&apikey={}",
-            base_url, self.chain_id, address, limit.unwrap_or(10), api_key);
+            base_url, self.chain_id, address, if limit == 0 { 10 } else { limit }, api_key);
 
         let response = match reqwest::Client::new().get(&url).send().await {
             Ok(r) if r.status().is_success() => r.text().await.unwrap_or_default(),
@@ -1252,7 +1248,6 @@ pub fn convert_to_xpub(xpub_str : String) -> String{
     }
     return bs58::encode(vec).with_check().into_string();
 }
-
 fn gas_price_to_string(gas_price: U256) -> String {
     return gas_price.to_string();
 }
