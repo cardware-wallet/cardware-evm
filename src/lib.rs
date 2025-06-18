@@ -1,7 +1,8 @@
 use wasm_bindgen::prelude::*;
 use reqwest::Client;
 use serde_json::json;
-use hex;
+use serde::{Deserialize, Serialize};
+
 use rlp::RlpStream;
 use rlp::Rlp;
 use std::str::FromStr;
@@ -396,10 +397,9 @@ impl Wallet {
         let r = &sig[..32];
         let s = &sig[32..64];
         let v_raw = sig[64];
-
         // 4) Normalize v to 27/28 if your device returned 0/1
         let v = if v_raw <= 1 { v_raw + 27 } else { v_raw };
-
+       
         // 5) Reassemble and hex‐encode
         let mut out = Vec::with_capacity(65);
         out.extend_from_slice(r);
@@ -443,7 +443,7 @@ impl Wallet {
             Ok(v) => v,
             Err(_) => return "Error: Failed to parse the value.".to_string(),
         };
-
+        
         // 2) Parse the “to” address
         let to_addr = match Address::from_str(&to) {
             Ok(a) => a,
@@ -1185,6 +1185,55 @@ impl Wallet {
     pub fn nonce(&self) -> u64 {
         self.nonce
     }
+
+    #[wasm_bindgen]
+    pub async fn get_tx_history(&mut self, base_url: &str, api_key: &str, limit: u32) -> String {
+        let address = self.address();
+        if address.starts_with("Error") { return address; }
+
+        let url = format!("{}?chainid={}&module=account&action=txlist&address={}&sort=desc&offset={}&apikey={}",
+            base_url, self.chain_id, address, if limit == 0 { 10 } else { limit }, api_key);
+
+        let response = match reqwest::Client::new().get(&url).send().await {
+            Ok(r) if r.status().is_success() => r.text().await.unwrap_or_default(),
+            _ => return "Error: Failed to fetch transactions from API.".to_string(),
+        };
+
+        let json: Value = match serde_json::from_str(&response) {
+            Ok(val) => val,
+            Err(_) => return "Error: Failed to deserialize.".to_string(),
+        };
+
+        if json.get("status").and_then(|s| s.as_str()) != Some("1") {
+            return "Error: API returned error status.".to_string();
+        }
+
+        let txs = match json.get("result").and_then(|r| r.as_array()) {
+            Some(arr) => arr,
+            None => return "[]".to_string(),
+        };
+
+        let tx_history: Vec<EtherscanTx> = txs.iter().map(|tx| {
+            let from = tx.get("from").and_then(|f| f.as_str()).unwrap_or("N/A");
+            let value_wei = tx.get("value").and_then(|v| v.as_str()).unwrap_or("0");
+            let value_eth = U256::from_dec_str(value_wei).map(wei_to_eth).unwrap_or(0.0);
+            let direction = if from.to_lowercase() == address.to_lowercase() { "sent" } else { "received" };
+            
+            EtherscanTx {
+                hash: tx.get("hash").and_then(|h| h.as_str()).unwrap_or("N/A").to_string(),
+                direction: direction.to_string(),
+                from_address: from.to_string(),
+                to_address: tx.get("to").and_then(|t| t.as_str()).unwrap_or("N/A").to_string(),
+                value_eth,
+                value_wei: value_wei.to_string(),
+                timestamp: tx.get("timeStamp").and_then(|ts| ts.as_str()).unwrap_or("0").to_string(),
+                block_number: tx.get("blockNumber").and_then(|bn| bn.as_str()).unwrap_or("0").to_string(),
+            }
+        }).collect();
+
+        serde_json::to_string(&tx_history).unwrap_or_else(|_| "Error: Failed to serialize transaction history.".to_string())
+    }
+
 }
 
 pub fn convert_to_xpub(xpub_str : String) -> String{
@@ -1305,3 +1354,14 @@ pub fn append_integers_as_bytes(vec: &mut Vec<u8>, addressdepth: u16, changedept
     vec.extend_from_slice(&changedepth_bytes);
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EtherscanTx {
+    pub hash: String,
+    pub direction: String,
+    pub from_address: String,
+    pub to_address: String,
+    pub value_eth: f64,
+    pub value_wei: String,
+    pub block_number: String,
+    pub timestamp: String,
+}
