@@ -443,6 +443,7 @@ impl Wallet {
             Ok(v) => v,
             Err(_) => return "Error: Failed to parse the value.".to_string(),
         };
+        
         // 2) Parse the “to” address
         let to_addr = match Address::from_str(&to) {
             Ok(a) => a,
@@ -1353,24 +1354,14 @@ pub fn append_integers_as_bytes(vec: &mut Vec<u8>, addressdepth: u16, changedept
     vec.extend_from_slice(&changedepth_bytes);
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EtherscanTx {
-    #[serde(rename = "block_number")]
-    pub block_number: String,
-
-    pub direction: String,
-
-    #[serde(rename = "from")]
-    pub from_address: String,
-
     pub hash: String,
-
-    pub timestamp: String,
-
-    #[serde(rename = "to")]
+    pub direction: String,
+    pub from_address: String,
     pub to_address: String,
-
     pub value_eth: f64,
-    
     pub value_wei: String,
+    pub block_number: String,
+    pub timestamp: String,
 }
