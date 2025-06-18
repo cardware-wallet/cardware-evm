@@ -27,4 +27,5 @@ export class Wallet {
   balance(): string;
   estimate_fee(fee_rate: number, gas_limit: number): string;
   nonce(): bigint;
+  get_tx_history(base_url: string, api_key: string, limit: number): Promise<string>;
 }

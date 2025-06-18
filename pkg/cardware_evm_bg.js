@@ -216,11 +216,11 @@ function passArrayJsValueToWasm0(array, malloc) {
     return ptr;
 }
 function __wbg_adapter_30(arg0, arg1, arg2) {
-    wasm.closure226_externref_shim(arg0, arg1, arg2);
+    wasm.closure232_externref_shim(arg0, arg1, arg2);
 }
 
-function __wbg_adapter_115(arg0, arg1, arg2, arg3) {
-    wasm.closure268_externref_shim(arg0, arg1, arg2, arg3);
+function __wbg_adapter_116(arg0, arg1, arg2, arg3) {
+    wasm.closure274_externref_shim(arg0, arg1, arg2, arg3);
 }
 
 const __wbindgen_enum_RequestCredentials = ["omit", "same-origin", "include"];
@@ -603,6 +603,20 @@ export class Wallet {
         const ret = wasm.wallet_get_nonce(this.__wbg_ptr);
         return BigInt.asUintN(64, ret);
     }
+    /**
+     * @param {string} base_url
+     * @param {string} api_key
+     * @param {number} limit
+     * @returns {Promise<string>}
+     */
+    get_tx_history(base_url, api_key, limit) {
+        const ptr0 = passStringToWasm0(base_url, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(api_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wallet_get_tx_history(this.__wbg_ptr, ptr0, len0, ptr1, len1, limit);
+        return ret;
+    }
 }
 
 export function __wbg_abort_775ef1d17fc65868(arg0) {
@@ -696,7 +710,7 @@ export function __wbg_new_23a2665fac83c611(arg0, arg1) {
             const a = state0.a;
             state0.a = 0;
             try {
-                return __wbg_adapter_115(a, state0.b, arg0, arg1);
+                return __wbg_adapter_116(a, state0.b, arg0, arg1);
             } finally {
                 state0.a = a;
             }
@@ -872,8 +886,8 @@ export function __wbindgen_cb_drop(arg0) {
     return ret;
 };
 
-export function __wbindgen_closure_wrapper842(arg0, arg1, arg2) {
-    const ret = makeMutClosure(arg0, arg1, 227, __wbg_adapter_30);
+export function __wbindgen_closure_wrapper859(arg0, arg1, arg2) {
+    const ret = makeMutClosure(arg0, arg1, 233, __wbg_adapter_30);
     return ret;
 };
 

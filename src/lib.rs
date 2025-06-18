@@ -1185,8 +1185,6 @@ impl Wallet {
     pub fn nonce(&self) -> u64 {
         self.nonce
     }
-
-    #[wasm_bindgen]
     pub async fn get_tx_history(&mut self, base_url: &str, api_key: &str, limit: u32) -> String {
         let address = self.address();
         if address.starts_with("Error") { return address; }
@@ -1233,7 +1231,6 @@ impl Wallet {
 
         serde_json::to_string(&tx_history).unwrap_or_else(|_| "Error: Failed to serialize transaction history.".to_string())
     }
-
 }
 
 pub fn convert_to_xpub(xpub_str : String) -> String{
