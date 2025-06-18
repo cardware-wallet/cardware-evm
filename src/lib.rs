@@ -1190,43 +1190,33 @@ impl Wallet {
         self.nonce
     }
 
-    async fn get_transaction_history(&mut self, base_url: &str, limit: u32) -> Result<Vec<EtherscanTx>, String> {
-        const API_KEY: &str = "KAQABZ3CB12ETJC8QG6WT3DRI2IH95I8I7";
-        
+    pub async fn get_tx_history(&mut self, base_url: &str, api_key: &str, limit: Option<u32>) -> String {
         let address = self.address();
-        if address.starts_with("Error:") {
-            return Err(address);
-        }
+        if address.starts_with("Error") { return address; }
 
         let url = format!("{}?chainid={}&module=account&action=txlist&address={}&sort=desc&offset={}&apikey={}",
-            base_url, self.chain_id, address, limit, API_KEY);
+            base_url, self.chain_id, address, limit.unwrap_or(10), api_key);
 
         let response = match reqwest::Client::new().get(&url).send().await {
-            Ok(resp) => resp,
-            Err(_) => return Err("Error: API request failed.".to_string()),
+            Ok(r) if r.status().is_success() => r.text().await.unwrap_or_default(),
+            _ => return "Error: Failed to fetch transactions from API.".to_string(),
         };
-        
-        let body = match response.text().await {
-            Ok(text) => text,
-            Err(_) => return Err("Error: Failed to read response.".to_string()),
-        };
-        
-        let json: Value = match serde_json::from_str(&body) {
+
+        let json: Value = match serde_json::from_str(&response) {
             Ok(val) => val,
-            Err(_) => return Err("Error: JSON parse error.".to_string()),
+            Err(_) => return "Error: Failed to deserialize.".to_string(),
         };
 
         if json.get("status").and_then(|s| s.as_str()) != Some("1") {
-            let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(format!("Error: {}", msg));
+            return "Error: API returned error status.".to_string();
         }
 
         let txs = match json.get("result").and_then(|r| r.as_array()) {
             Some(arr) => arr,
-            None => return Ok(vec![]),
+            None => return "[]".to_string(),
         };
 
-        let structured_txs: Vec<EtherscanTx> = txs.iter().map(|tx| {
+        let tx_history: Vec<EtherscanTx> = txs.iter().map(|tx| {
             let from = tx.get("from").and_then(|f| f.as_str()).unwrap_or("N/A");
             let value_wei = tx.get("value").and_then(|v| v.as_str()).unwrap_or("0");
             let value_eth = U256::from_dec_str(value_wei).map(wei_to_eth).unwrap_or(0.0);
@@ -1243,22 +1233,8 @@ impl Wallet {
                 block_number: tx.get("blockNumber").and_then(|bn| bn.as_str()).unwrap_or("0").to_string(),
             }
         }).collect();
-        
-        Ok(structured_txs)
-    }
 
-
-
-    pub async fn transactions(&mut self, base_url: &str, limit: Option<u32>) -> String {
-        match self.get_transaction_history(base_url, limit.unwrap_or(10)).await {
-            Ok(txs) => {
-                match serde_json::to_string_pretty(&txs) {
-                    Ok(json_str) => json_str,
-                    Err(_) => "Error: Failed to serialize transactions.".to_string(),
-                }
-            },
-            Err(error) => error,
-        }
+        serde_json::to_string(&tx_history).unwrap_or_else(|_| "Error: Failed to serialize transaction history.".to_string())
     }
 
 }

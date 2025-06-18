@@ -18,8 +18,10 @@ async fn main() {
     println!("EIP712 res: {:?}",res5);
 
 
-    //Transaction History - Structured and Pretty formatted
-    let tx_history = wal.transactions("https://api.etherscan.io/v2/api", Some(5)).await;
+    // Test transaction history
+    println!("\n=== Testing Transaction History ===");
+    const ETHERSCAN_API_KEY: &str = "KAQABZ3CB12ETJC8QG6WT3DRI2IH95I8I7";
+    let tx_history = wal.get_tx_history("https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, Some(5)).await;
     println!("Transaction History (first 5 transactions):");
     println!("{}", tx_history);
     //estimate fee example:
