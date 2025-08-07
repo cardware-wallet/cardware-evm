@@ -1231,6 +1231,255 @@ impl Wallet {
 
         serde_json::to_string(&tx_history).unwrap_or_else(|_| "Error: Failed to serialize transaction history.".to_string())
     }
+    //NFT methods ERC721 + ERC1155
+    pub fn erc721_transfer(&self,contract_address: String,to: String, token_id: &str,fee_rate: i32,) -> String {
+        let gas_limit: u64 = 100_000;
+        let token_id_u256 = match U256::from_dec_str(token_id) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to parse token ID.".to_string(),
+        };
+
+        let data = encode_erc721_transfer(&self.address, &to, token_id_u256);
+
+        // gas price adjustment
+        let self_gas = gas_price_from_string(&self.gas_price);
+        let new_gas_price = match fee_rate {
+            1 => self_gas * U256::from(15) / U256::from(10),
+            2 => self_gas * U256::from(20) / U256::from(10),
+            _ => self_gas,
+        };
+
+        // RLP‐encode: [nonce, gasPrice, gasLimit, to=contract, value=0, data, chain_id, 0, 0]
+        let mut stream = RlpStream::new_list(9);
+        stream.append(&U256::from(self.nonce));
+        stream.append(&new_gas_price);
+        stream.append(&U256::from(gas_limit));
+        let caddr = Address::from_str(&contract_address).unwrap_or(Address::zero());
+        stream.append(&caddr);
+        stream.append(&U256::zero());
+        stream.append(&data);
+        stream.append(&self.chain_id);
+        stream.append(&0u8);
+        stream.append(&0u8);
+        let rlp = stream.out();
+
+        // Keccak + derivation‐bytes
+        let mut h = Keccak::v256();
+        let mut tx_hash = [0u8; 32];
+        h.update(&rlp);
+        h.finalize(&mut tx_hash);
+        let mut blob = tx_hash.to_vec();
+        if let Ok((h1, h2)) = extract_u16s(&self.account_derivation_path) {
+            append_integers_as_bytes(&mut blob, h1, h2);
+        } else {
+            return "Error: Derivation path error.".to_string();
+        }
+
+        format!("{}:&{}", hex::encode(rlp), base64::encode(&blob))
+    }
+
+    // Batch-query ERC-721 `balanceOf(owner)` for each contract.
+    pub async fn erc721_balance(&self,contract_addresses: Vec<String>,) -> Vec<String> {
+        let owner_clean = self.address.trim_start_matches("0x");
+        let padded_owner = format!("{:0>64}", owner_clean);
+
+        let mut batch = Vec::new();
+        for (i, contract) in contract_addresses.iter().enumerate() {
+            let call_data = format!("0x70a08231{}", padded_owner);
+            batch.push(json!({
+                "jsonrpc":"2.0",
+                "method":"eth_call",
+                "params":[{ "to": contract, "data": call_data }, "latest"],
+                "id": i + 1
+            }));
+        }
+
+        let client = reqwest::Client::new();
+        let resp = match client
+            .post(&self.infura_url)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&batch)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(_) => return vec!["Error: Infura error.".to_string()],
+        };
+
+        if !resp.status().is_success() {
+            return vec!["Error: Infura error.".to_string()];
+        }
+
+        let body = match resp.text().await {
+            Ok(t) => t,
+            Err(_) => return vec!["Error: Infura error.".to_string()],
+        };
+        let parsed: Vec<Value> = match serde_json::from_str(&body) {
+            Ok(v) => v,
+            Err(_) => return vec!["Error: JSON parse error.".to_string()],
+        };
+
+        let mut out = vec!["Success".to_string()];
+        for item in parsed {
+            if let Some(r) = item.get("result").and_then(|v| v.as_str()) {
+                let bal = U256::from_str_radix(r.trim_start_matches("0x"), 16)
+                    .unwrap_or(U256::zero());
+                out.push(bal.to_string());
+            } else {
+                return vec!["Error: Unexpected JSON format.".to_string()];
+            }
+        }
+        out
+    }
+
+    // Query ERC-721 `ownerOf(tokenId)`.
+    pub async fn erc721_owner_of(&self,contract_address: String,token_id: String,) -> String {
+        let id = match U256::from_dec_str(&token_id) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to parse token ID.".to_string(),
+        };
+        let mut id_bytes = [0u8; 32];
+        id.to_big_endian(&mut id_bytes);
+
+        // build call_data = 0x6352211e + padded tokenId
+        let call_data = {
+            let mut d = Vec::new();
+            d.extend(hex::decode("6352211e").unwrap());
+            d.extend(&id_bytes);
+            format!("0x{}", hex::encode(d))
+        };
+
+        let req = json!({
+            "jsonrpc":"2.0",
+            "method":"eth_call",
+            "params":[{ "to": contract_address, "data": call_data }, "latest"],
+            "id": 1
+        });
+        let client = reqwest::Client::new();
+        let resp = match client
+            .post(&self.infura_url)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&req)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(_) => return "Error: Infura error.".to_string(),
+        };
+        if !resp.status().is_success() {
+            return "Error: Infura error.".to_string();
+        }
+        let j: Value = match resp.json().await {
+            Ok(v) => v,
+            Err(_) => return "Error: JSON parse error.".to_string(),
+        };
+        let result = j.get("result").and_then(|v| v.as_str()).unwrap_or("");
+        let bytes = hex::decode(result.trim_start_matches("0x")).unwrap_or_default();
+        if bytes.len() < 20 {
+            return "Error: Unexpected result length.".to_string();
+        }
+        let addr = &bytes[bytes.len() - 20..];
+        format!("0x{}", hex::encode(addr))
+    }
+
+    // Query ERC-1155 `balanceOf(owner, tokenId)`.
+    pub async fn erc1155_balance_of(&self,contract_address: String,owner: String,token_id: String,) -> String {
+        let id = match U256::from_dec_str(&token_id) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to parse token ID.".to_string(),
+        };
+        let mut id_bytes = [0u8; 32];
+        id.to_big_endian(&mut id_bytes);
+
+        let call_data = {
+            let mut d = Vec::new();
+            d.extend(hex::decode("00fdd58e").unwrap());  // balanceOf selector
+            let owner_clean = owner.trim_start_matches("0x");
+            let owner_bytes = hex::decode(owner_clean).unwrap_or_default();
+            let mut pad_o = vec![0u8; 12];
+            pad_o.extend(owner_bytes);
+            d.extend(pad_o);
+            d.extend(&id_bytes);
+            format!("0x{}", hex::encode(d))
+        };
+
+        let req = json!({
+            "jsonrpc":"2.0",
+            "method":"eth_call",
+            "params":[{ "to": contract_address, "data": call_data }, "latest"],
+            "id": 1
+        });
+        let client = reqwest::Client::new();
+        let resp = match client
+            .post(&self.infura_url)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&req)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(_) => return "Error: Infura error.".to_string(),
+        };
+        if !resp.status().is_success() {
+            return "Error: Infura error.".to_string();
+        }
+        let j: Value = match resp.json().await {
+            Ok(v) => v,
+            Err(_) => return "Error: JSON parse error.".to_string(),
+        };
+        let result = j.get("result").and_then(|v| v.as_str()).unwrap_or("");
+        let bal = U256::from_str_radix(result.trim_start_matches("0x"), 16)
+            .unwrap_or(U256::zero());
+        bal.to_string()
+    }
+
+    // Send an ERC-1155 `safeTransferFrom(self.address, to, tokenId, amount, bytes)`.
+    pub fn erc1155_transfer(&self,contract_address: String,to: String,token_id: &str,amount: &str,fee_rate: i32,) -> String {
+        let gas_limit: u64 = 200_000;
+        let tid = match U256::from_dec_str(token_id) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to parse token ID.".to_string(),
+        };
+        let amt = match U256::from_dec_str(amount) {
+            Ok(v) => v,
+            Err(_) => return "Error: Failed to parse amount.".to_string(),
+        };
+
+        let data = encode_erc1155_transfer(&self.address, &to, tid, amt);
+
+        let self_gas = gas_price_from_string(&self.gas_price);
+        let new_gas_price = match fee_rate {
+            1 => self_gas * U256::from(15) / U256::from(10),
+            2 => self_gas * U256::from(20) / U256::from(10),
+            _ => self_gas,
+        };
+
+        let mut stream = RlpStream::new_list(9);
+        stream.append(&U256::from(self.nonce));
+        stream.append(&new_gas_price);
+        stream.append(&U256::from(gas_limit));
+        let caddr = Address::from_str(&contract_address).unwrap_or(Address::zero());
+        stream.append(&caddr);
+        stream.append(&U256::zero());
+        stream.append(&data);
+        stream.append(&self.chain_id);
+        stream.append(&0u8);
+        stream.append(&0u8);
+        let rlp = stream.out();
+
+        let mut h = Keccak::v256();
+        let mut tx_hash = [0u8; 32];
+        h.update(&rlp);
+        h.finalize(&mut tx_hash);
+        let mut blob = tx_hash.to_vec();
+        if let Ok((h1, h2)) = extract_u16s(&self.account_derivation_path) {
+            append_integers_as_bytes(&mut blob, h1, h2);
+        } else {
+            return "Error: Derivation path error.".to_string();
+        }
+
+        format!("{}:&{}", hex::encode(rlp), base64::encode(&blob))
+    }
 }
 
 pub fn convert_to_xpub(xpub_str : String) -> String{
@@ -1349,6 +1598,95 @@ pub fn append_integers_as_bytes(vec: &mut Vec<u8>, addressdepth: u16, changedept
     let changedepth_bytes = changedepth.to_le_bytes();
     vec.extend_from_slice(&addressdepth_bytes);
     vec.extend_from_slice(&changedepth_bytes);
+}
+
+//NFT Encoding helper functions, ERC721 ERC1155
+pub fn encode_erc721_transfer(from: &str, to: &str, token_id: U256) -> Vec<u8> {
+    let mut data = Vec::new();
+    // function selector for transferFrom(address,address,uint256)
+    data.extend(hex::decode("23b872dd").expect("Invalid selector"));
+
+    // from
+    let from_clean = from.trim_start_matches("0x");
+    let from_bytes = hex::decode(from_clean).expect("Invalid from address");
+    let mut pad_from = vec![0u8; 12];
+    pad_from.extend(from_bytes);
+    data.extend(pad_from);
+
+    // to
+    let to_clean = to.trim_start_matches("0x");
+    let to_bytes = hex::decode(to_clean).expect("Invalid to address");
+    let mut pad_to = vec![0u8; 12];
+    pad_to.extend(to_bytes);
+    data.extend(pad_to);
+
+    // tokenId
+    let mut id_bytes = [0u8; 32];
+    token_id.to_big_endian(&mut id_bytes);
+    data.extend_from_slice(&id_bytes);
+
+    data
+}
+
+pub fn encode_erc1155_balance(owner: &str, token_id: U256) -> Vec<u8> {
+    let mut data = Vec::new();
+    // function selector for balanceOf(address,uint256)
+    data.extend(hex::decode("00fdd58e").expect("Invalid selector"));
+
+    // owner
+    let owner_clean = owner.trim_start_matches("0x");
+    let owner_bytes = hex::decode(owner_clean).expect("Invalid owner address");
+    let mut pad_owner = vec![0u8; 12];
+    pad_owner.extend(owner_bytes);
+    data.extend(pad_owner);
+
+    // tokenId
+    let mut id_bytes = [0u8; 32];
+    token_id.to_big_endian(&mut id_bytes);
+    data.extend_from_slice(&id_bytes);
+
+    data
+}
+
+
+pub fn encode_erc1155_transfer(from: &str, to: &str, token_id: U256, amount: U256) -> Vec<u8> {
+    let mut data = Vec::new();
+    // function selector for safeTransferFrom(address,address,uint256,uint256,bytes)
+    data.extend(hex::decode("f242432a").expect("Invalid selector"));
+
+    // from
+    let from_clean = from.trim_start_matches("0x");
+    let from_bytes = hex::decode(from_clean).expect("Invalid from address");
+    let mut pad_from = vec![0u8; 12];
+    pad_from.extend(from_bytes);
+    data.extend(pad_from);
+
+    // to
+    let to_clean = to.trim_start_matches("0x");
+    let to_bytes = hex::decode(to_clean).expect("Invalid to address");
+    let mut pad_to = vec![0u8; 12];
+    pad_to.extend(to_bytes);
+    data.extend(pad_to);
+
+    // tokenId
+    let mut id_bytes = [0u8; 32];
+    token_id.to_big_endian(&mut id_bytes);
+    data.extend(&id_bytes);
+
+    // amount
+    let mut amt_bytes = [0u8; 32];
+    amount.to_big_endian(&mut amt_bytes);
+    data.extend(&amt_bytes);
+
+    // offset to the dynamic `bytes data` (5 * 32 = 160)
+    let mut offset = [0u8; 32];
+    offset[31] = 160;
+    data.extend(&offset);
+
+    // length of `data` = 0
+    data.extend(&[0u8; 32]);
+
+    data
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -28,4 +28,9 @@ export class Wallet {
   estimate_fee(fee_rate: number, gas_limit: number): string;
   nonce(): bigint;
   get_tx_history(base_url: string, api_key: string, limit: number): Promise<string>;
+  erc721_transfer(contract_address: string, to: string, token_id: string, fee_rate: number): string;
+  erc721_balance(contract_addresses: string[]): Promise<string[]>;
+  erc721_owner_of(contract_address: string, token_id: string): Promise<string>;
+  erc1155_balance_of(contract_address: string, owner: string, token_id: string): Promise<string>;
+  erc1155_transfer(contract_address: string, to: string, token_id: string, amount: string, fee_rate: number): string;
 }

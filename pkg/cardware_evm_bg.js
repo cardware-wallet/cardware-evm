@@ -216,11 +216,11 @@ function passArrayJsValueToWasm0(array, malloc) {
     return ptr;
 }
 function __wbg_adapter_30(arg0, arg1, arg2) {
-    wasm.closure232_externref_shim(arg0, arg1, arg2);
+    wasm.closure245_externref_shim(arg0, arg1, arg2);
 }
 
-function __wbg_adapter_116(arg0, arg1, arg2, arg3) {
-    wasm.closure274_externref_shim(arg0, arg1, arg2, arg3);
+function __wbg_adapter_121(arg0, arg1, arg2, arg3) {
+    wasm.closure287_externref_shim(arg0, arg1, arg2, arg3);
 }
 
 const __wbindgen_enum_RequestCredentials = ["omit", "same-origin", "include"];
@@ -617,6 +617,98 @@ export class Wallet {
         const ret = wasm.wallet_get_tx_history(this.__wbg_ptr, ptr0, len0, ptr1, len1, limit);
         return ret;
     }
+    /**
+     * @param {string} contract_address
+     * @param {string} to
+     * @param {string} token_id
+     * @param {number} fee_rate
+     * @returns {string}
+     */
+    erc721_transfer(contract_address, to, token_id, fee_rate) {
+        let deferred4_0;
+        let deferred4_1;
+        try {
+            const ptr0 = passStringToWasm0(contract_address, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(to, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(token_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ret = wasm.wallet_erc721_transfer(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, fee_rate);
+            deferred4_0 = ret[0];
+            deferred4_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        }
+    }
+    /**
+     * @param {string[]} contract_addresses
+     * @returns {Promise<string[]>}
+     */
+    erc721_balance(contract_addresses) {
+        const ptr0 = passArrayJsValueToWasm0(contract_addresses, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wallet_erc721_balance(this.__wbg_ptr, ptr0, len0);
+        return ret;
+    }
+    /**
+     * @param {string} contract_address
+     * @param {string} token_id
+     * @returns {Promise<string>}
+     */
+    erc721_owner_of(contract_address, token_id) {
+        const ptr0 = passStringToWasm0(contract_address, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(token_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wallet_erc721_owner_of(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+        return ret;
+    }
+    /**
+     * @param {string} contract_address
+     * @param {string} owner
+     * @param {string} token_id
+     * @returns {Promise<string>}
+     */
+    erc1155_balance_of(contract_address, owner, token_id) {
+        const ptr0 = passStringToWasm0(contract_address, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(owner, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(token_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.wallet_erc1155_balance_of(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        return ret;
+    }
+    /**
+     * @param {string} contract_address
+     * @param {string} to
+     * @param {string} token_id
+     * @param {string} amount
+     * @param {number} fee_rate
+     * @returns {string}
+     */
+    erc1155_transfer(contract_address, to, token_id, amount, fee_rate) {
+        let deferred5_0;
+        let deferred5_1;
+        try {
+            const ptr0 = passStringToWasm0(contract_address, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(to, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(token_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(amount, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ret = wasm.wallet_erc1155_transfer(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, fee_rate);
+            deferred5_0 = ret[0];
+            deferred5_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        }
+    }
 }
 
 export function __wbg_abort_775ef1d17fc65868(arg0) {
@@ -710,7 +802,7 @@ export function __wbg_new_23a2665fac83c611(arg0, arg1) {
             const a = state0.a;
             state0.a = 0;
             try {
-                return __wbg_adapter_116(a, state0.b, arg0, arg1);
+                return __wbg_adapter_121(a, state0.b, arg0, arg1);
             } finally {
                 state0.a = a;
             }
@@ -886,8 +978,8 @@ export function __wbindgen_cb_drop(arg0) {
     return ret;
 };
 
-export function __wbindgen_closure_wrapper859(arg0, arg1, arg2) {
-    const ret = makeMutClosure(arg0, arg1, 233, __wbg_adapter_30);
+export function __wbindgen_closure_wrapper886(arg0, arg1, arg2) {
+    const ret = makeMutClosure(arg0, arg1, 246, __wbg_adapter_30);
     return ret;
 };
 
