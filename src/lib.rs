@@ -959,6 +959,7 @@ impl Wallet {
         }
         return "Error: Failed to broadcast transaction.".to_string();
     }
+
     pub fn construct_signed_tx(&self, unsigned_tx: String, tx_signature: String) -> String {
         // 1. strip 0x and hex-decode
         let unsigned_hex = unsigned_tx.trim_start_matches("0x");
@@ -1232,24 +1233,28 @@ impl Wallet {
         serde_json::to_string(&tx_history).unwrap_or_else(|_| "Error: Failed to serialize transaction history.".to_string())
     }
     //NFT methods ERC721 + ERC1155
-    pub fn erc721_transfer(&self,contract_address: String,to: String, token_id: &str,fee_rate: i32,) -> String {
-        let gas_limit: u64 = 100_000;
+    // NFT methods ERC721 + ERC1155
+    pub fn erc721_transfer(&self, contract_address: String,to: String,token_id: &str,fee_rate: i32,) -> String {
+        // Parse token ID
         let token_id_u256 = match U256::from_dec_str(token_id) {
             Ok(v) => v,
             Err(_) => return "Error: Failed to parse token ID.".to_string(),
         };
 
+        // Encode calldata
         let data = encode_erc721_transfer(&self.address, &to, token_id_u256);
 
-        // gas price adjustment
+        // Gas settings (same style as your ERC-20 builder)
+        let gas_limit: u64 = 160_000;
         let self_gas = gas_price_from_string(&self.gas_price);
         let new_gas_price = match fee_rate {
-            1 => self_gas * U256::from(15) / U256::from(10),
-            2 => self_gas * U256::from(20) / U256::from(10),
-            _ => self_gas,
+            0 => &self_gas * U256::from(10) / U256::from(10),
+            1 =>  self_gas * U256::from(15) / U256::from(10),
+            2 => &self_gas * U256::from(20) / U256::from(10),
+            _ =>  self_gas,
         };
 
-        // RLP‐encode: [nonce, gasPrice, gasLimit, to=contract, value=0, data, chain_id, 0, 0]
+        // RLP encode [nonce, gasPrice, gasLimit, to, value, data, chainId, 0, 0]
         let mut stream = RlpStream::new_list(9);
         stream.append(&U256::from(self.nonce));
         stream.append(&new_gas_price);
@@ -1261,21 +1266,24 @@ impl Wallet {
         stream.append(&self.chain_id);
         stream.append(&0u8);
         stream.append(&0u8);
+
         let rlp = stream.out();
 
-        // Keccak + derivation‐bytes
+        // Keccak hash preimage
         let mut h = Keccak::v256();
         let mut tx_hash = [0u8; 32];
         h.update(&rlp);
         h.finalize(&mut tx_hash);
-        let mut blob = tx_hash.to_vec();
-        if let Ok((h1, h2)) = extract_u16s(&self.account_derivation_path) {
-            append_integers_as_bytes(&mut blob, h1, h2);
-        } else {
-            return "Error: Derivation path error.".to_string();
+
+        // Append derivation bytes
+        let mut total_bytes = Vec::with_capacity(36);
+        total_bytes.extend_from_slice(&tx_hash);
+        match extract_u16s(&self.account_derivation_path) {
+            Ok((first, second)) => append_integers_as_bytes(&mut total_bytes, first, second),
+            Err(_) => return "Error: Derivation path error.".to_string(),
         }
 
-        format!("{}:&{}", hex::encode(rlp), base64::encode(&blob))
+        format!("{}:&{}", hex::encode(rlp), base64::encode(&total_bytes))
     }
 
     // Batch-query ERC-721 `balanceOf(owner)` for each contract.
@@ -1601,31 +1609,29 @@ pub fn append_integers_as_bytes(vec: &mut Vec<u8>, addressdepth: u16, changedept
 }
 
 //NFT Encoding helper functions, ERC721 ERC1155
+/// Encode ERC-721 `transferFrom(address,address,uint256)`
+/// Always returns exactly 100 bytes: 4 selector + 3×32-byte words
 pub fn encode_erc721_transfer(from: &str, to: &str, token_id: U256) -> Vec<u8> {
-    let mut data = Vec::new();
-    // function selector for transferFrom(address,address,uint256)
-    data.extend(hex::decode("23b872dd").expect("Invalid selector"));
+    fn pad_address(addr: &str) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        let clean = addr.trim_start_matches("0x");
+        let raw = hex::decode(clean).expect("Invalid address hex");
+        assert_eq!(raw.len(), 20, "Address must be 20 bytes");
+        out[12..32].copy_from_slice(&raw);
+        out
+    }
 
-    // from
-    let from_clean = from.trim_start_matches("0x");
-    let from_bytes = hex::decode(from_clean).expect("Invalid from address");
-    let mut pad_from = vec![0u8; 12];
-    pad_from.extend(from_bytes);
-    data.extend(pad_from);
+    let mut out = Vec::with_capacity(100);
+    // selector for transferFrom(address,address,uint256)
+    out.extend_from_slice(&[0x23, 0xb8, 0x72, 0xdd]);
+    out.extend_from_slice(&pad_address(from));
+    out.extend_from_slice(&pad_address(to));
 
-    // to
-    let to_clean = to.trim_start_matches("0x");
-    let to_bytes = hex::decode(to_clean).expect("Invalid to address");
-    let mut pad_to = vec![0u8; 12];
-    pad_to.extend(to_bytes);
-    data.extend(pad_to);
+    let mut id_word = [0u8; 32];
+    token_id.to_big_endian(&mut id_word);
+    out.extend_from_slice(&id_word);
 
-    // tokenId
-    let mut id_bytes = [0u8; 32];
-    token_id.to_big_endian(&mut id_bytes);
-    data.extend_from_slice(&id_bytes);
-
-    data
+    out
 }
 
 pub fn encode_erc1155_balance(owner: &str, token_id: U256) -> Vec<u8> {
